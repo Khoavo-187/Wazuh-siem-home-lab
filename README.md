@@ -1,11 +1,14 @@
-# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon
+# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + Virustotal
 
 > A self-built Security Operations Center home lab for practicing detection engineering, MITRE ATT&CK-mapped attack simulation, and log correlation — built as a Blue Team portfolio project.
 
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1e6d90)
 ![Suricata](https://img.shields.io/badge/IDS%2FIPS-Suricata-cc0000)
 ![pfSense](https://img.shields.io/badge/Firewall-pfSense-212121)
+![Sysmon](https://img.shields.io/badge/Endpoint-Sysmon-0078D7)
+![VirusTotal](https://img.shields.io/badge/Threat%20Intel-VirusTotal-394EFF)
 ![MITRE ATT&CK](https://img.shields.io/badge/Mapped-MITRE%20ATT%26CK-orange)
+![VMware](https://img.shields.io/badge/Virtualization-VMware-607078)
 ![Status](https://img.shields.io/badge/Status-Active%20Lab-brightgreen)
 
 ---
