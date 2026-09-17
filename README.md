@@ -1,4 +1,4 @@
-# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense
+# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + Virustotal
 
 > A self-built Security Operations Center home lab for practicing detection engineering, MITRE ATT&CK-mapped attack simulation, and log correlation — built as a Blue Team portfolio project by an Information Security student.
 
