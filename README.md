@@ -221,8 +221,8 @@ wazuh-soc-home-lab/
 ├── README.md
 │
 ├── architecture/
-│   ├── network-topology.png
-│   └── logical-data-flow.drawio
+│   ├── architecture-and-data-flow.png
+│   
 │
 ├── docs/
 │   ├── 01-infrastructure-setup.md
