@@ -1,6 +1,6 @@
-# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + Virustotal
+# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon
 
-> A self-built Security Operations Center home lab for practicing detection engineering, MITRE ATT&CK-mapped attack simulation, and log correlation — built as a Blue Team portfolio project by an Information Security student.
+> A self-built Security Operations Center home lab for practicing detection engineering, MITRE ATT&CK-mapped attack simulation, and log correlation — built as a Blue Team portfolio project.
 
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1e6d90)
 ![Suricata](https://img.shields.io/badge/IDS%2FIPS-Suricata-cc0000)
@@ -11,17 +11,14 @@
 ---
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
-- [What This Lab Covers](#what-this-lab-covers)
-- [Attack Chain / MITRE ATT&CK Coverage](#attack-chain--mitre-attck-coverage)
+- [Attack Chain & MITRE ATT&CK Coverage](#attack-chain--mitre-attck-coverage)
 - [Detection Engineering Highlights](#detection-engineering-highlights)
-- [Sample Detection](#sample-detection)
 - [Repository Structure](#repository-structure)
-- [Full Writeups](#full-writeups)
-- [Lessons Learned](#lessons-learned)
-- [Known Limitations / Future Work](#known-limitations--future-work)
+- [Lessons Learned & Troubleshooting](#lessons-learned--troubleshooting)
 - [Author](#author)
 - [License](#license)
 
@@ -29,9 +26,19 @@
 
 ## Overview
 
-This repository documents a fully self-hosted SOC home lab built to practice **Blue Team detection engineering** end-to-end: from writing custom Wazuh decoders/rules against raw pfSense and Suricata logs, to simulating a full 12-stage attack chain (Recon → Exfiltration) mapped to MITRE ATT&CK, to validating every detection against real captured evidence rather than assumptions.
+This repository documents a fully self-hosted SOC home lab built to practice **Blue Team detection engineering** end-to-end.
 
-The lab is deliberately built and debugged from scratch (no pre-made rulesets) to demonstrate the actual workflow of a detection engineer: write a rule → generate the real behavior → check if it fires → find out it didn't → figure out why → fix the decoder/rule → re-verify. Several real debugging stories from this process are documented below and in the full writeups.
+The project spans from writing custom Wazuh decoders and rules against raw pfSense and Suricata logs, to simulating a full 11-stage attack chain (**Reconnaissance → Exfiltration**) mapped to the MITRE ATT&CK framework.
+
+The lab was built and debugged from scratch to demonstrate the actual workflow of a detection engineer:
+
+1. Writing a rule
+2. Generating the corresponding behavior
+3. Analyzing false positives
+4. Tuning the detection logic
+5. Verifying the final alert
+
+---
 
 ## Architecture
 
@@ -41,132 +48,349 @@ The lab is deliberately built and debugged from scratch (no pre-made rulesets) t
 | **Windows 11 Endpoint** | Wazuh Agent, Sysmon, victim machine | `192.168.60.1` |
 | **Kali Linux** | Attacker machine | `192.168.60.135` |
 | **pfSense** | Firewall/gateway, forwards `filterlog` via syslog | `192.168.60.254` |
-| **Suricata (x2 instances)** | IDS on pfSense WAN (IPS Legacy Blocking Mode) + IDS on Windows endpoint (host-based) | — |
+| **Suricata (x2)** | IDS on pfSense WAN + IDS on Windows endpoint | — |
 
-```
-Kali (attacker) ──► pfSense (firewall + Suricata IPS) ──► Windows 11 (Wazuh Agent + Sysmon + Suricata IDS)
-                                                                        │
-                                                                        ▼
-                                                              Wazuh Manager (SIEM/XDR)
+```text
+Kali (Attacker)
+      │
+      ▼
+pfSense (Firewall / Gateway)
+      │
+      ▼
+Windows 11
+(Wazuh Agent + Sysmon + Suricata IDS)
+      │
+      ▼
+Wazuh Manager
+(SIEM/XDR)
 ```
 
-Two-tier Suricata deployment follows defense-in-depth: a single perimeter IDS/IPS on pfSense would miss east-west (LAN-to-LAN) traffic, so a second Suricata instance runs directly on the monitored endpoint.
+### Defense-in-Depth Design
+
+The two-tier Suricata deployment follows a **defense-in-depth** strategy.
+
+A single perimeter IDS on pfSense may miss **east-west traffic** between internal hosts. Therefore, a second Suricata instance runs directly on the monitored Windows endpoint to provide additional host-level network visibility.
+
+---
 
 ## Tech Stack
 
-- **SIEM/XDR:** Wazuh (Manager, Indexer, Dashboard)
-- **Network IDS/IPS:** Suricata (custom local rules, dual deployment)
-- **Firewall:** pfSense (custom `filterlog` decoder, Legacy Blocking IPS)
-- **Host telemetry:** Sysmon (SwiftOnSecurity base config + custom rules), Windows Event Log
-- **Threat Intel:** VirusTotal API integration
-- **Hypervisor:** VMware
-- **Attack tooling:** nmap, Hydra, netcat, PowerShell (reverse shell, encoded commands), procdump
+### SIEM / XDR
 
-## What This Lab Covers
+- **Wazuh**
 
-1. **Baseline Detection Engineering** — custom pfSense filterlog decoder (TCP/UDP/ICMP/IGMP/IPv4-fallback/IPv6), Suricata local rules, Sysmon rule set (PowerShell obfuscation, LOLBins, persistence, credential access, anti-forensics), VirusTotal FIM enrichment.
-2. **Full Attack Chain Simulation** — a 12-stage scenario from Reconnaissance to Exfiltration, each stage executed for real and validated against actual Wazuh alerts (not simulated JSON).
-3. **Correlation Rules** — multi-event detection linking brute force → successful login, process → LSASS access, and log-clearing anti-forensics.
-4. **Rule Verification Discipline** — every rule in this project is tagged as either confirmed by real evidence or still pending validation; see [Known Limitations](#known-limitations--future-work).
+### Network Security
 
-## Attack Chain / MITRE ATT&CK Coverage
+- **Suricata**
+  - Custom local detection rules
+- **pfSense**
+  - Firewall
+  - Syslog forwarding
+  - Custom `filterlog` decoders
+
+### Endpoint Security
+
+- **Sysmon**
+  - Process lineage monitoring
+  - Registry monitoring
+  - LSASS access monitoring
+
+### Threat Intelligence
+
+- **VirusTotal API**
+  - File Integrity Monitoring (FIM) enrichment
+
+### Virtualization
+
+- **VMware**
+
+### Attack / Simulation Tooling
+
+- **Nmap**
+- **Hydra**
+- **Netcat**
+- **PowerShell**
+  - Encoded commands
+  - Reverse shells
+- **Procdump**
+
+---
+
+## Attack Chain & MITRE ATT&CK Coverage
+
+A full simulation scenario was executed and validated against actual Wazuh alerts.
 
 | Stage | Tactic | Technique | Detection Source |
 |---|---|---|---|
 | Reconnaissance | Reconnaissance | T1595, T1018 | Suricata, pfSense |
 | Brute Force | Credential Access | T1110 | Suricata, Windows Event 4625 |
-| Initial Access | Initial Access | T1078 | Windows Event Log, correlation rule |
+| Initial Access | Initial Access | T1078 | Windows Event Log, Correlation Rule |
 | Execution | Execution | T1059.001, T1027 | Sysmon (Encoded PowerShell) |
-| Discovery | Discovery | T1087, T1082, T1033 | Sysmon (process lineage) |
+| Discovery | Discovery | T1087, T1082, T1033 | Sysmon (Process Lineage, LOLBins) |
 | Payload Delivery | Command and Control | T1105 | Suricata, FIM, VirusTotal |
-| Persistence | Persistence | T1547.001 | Sysmon (Registry Run key) |
-| Command & Control | Command and Control | T1071 | Suricata (reverse shell) |
-| Credential Access | Credential Access | T1003.001 | Sysmon (LSASS access) |
-| Anti-Forensics | Defense Evasion | T1070.001 | Windows Event 1102 |
-| Exfiltration | Exfiltration | T1041 | Sysmon (Network Connect) |
+| Persistence | Persistence | T1547.001 | Sysmon (Registry Run Key) |
+| Command & Control | Command and Control | T1071 | Suricata (Reverse Shell) |
+| Credential Access | Credential Access | T1003.001 | Sysmon (LSASS Memory Access) |
+| Anti-Forensics | Defense Evasion | T1070.001 | Windows Event 1102 (Log Cleared) |
+| Exfiltration | Exfiltration | T1041 | Sysmon (Network Connection) |
 
-Full stage-by-stage evidence, raw logs, and correlation rule XML are in the [full writeups](#full-writeups).
+---
 
 ## Detection Engineering Highlights
 
-A few things worth highlighting beyond "wrote some rules":
+Beyond writing standard rules, this project involved significant troubleshooting and logic tuning.
 
-- **Diagnosed a silent decoder failure in production.** A pfSense-side hostname inconsistency (some syslog messages arrive without a hostname token before `filterlog[pid]:`) caused the `<program_name>` field-based decoder to silently fail pre-decoding — meaning *zero* fields were ever extracted and every custom pfSense rule above the generic catch-all stopped firing, with no error thrown. Diagnosed via `wazuh-logtest` phase-by-phase output, root-caused to Wazuh's hostname/program_name parsing being upstream-dependent, and fixed by switching to a `<prematch>`-based parent decoder that matches on the literal `filterlog[\d+]:` token regardless of syslog header formatting.
-- **Fixed a false-positive-prone correlation rule.** The original SYN-burst rule matched on `<same_dstport/>` alone, which meant a burst of plain UDP DNS queries (port 53) was being mislabeled as a "SYN flood." Added an explicit `<protocol>tcp</protocol>` constraint to correct it.
-- **Built a fallback decoder chain with negative lookahead** (`pfsense-lab-ipv4`) to correctly bucket protocols outside TCP/UDP/ICMP/IGMP without needing a decoder per protocol.
-- **Distinguished internal Wazuh activity from real attacker activity** using Sysmon process lineage + integrity level + working directory, rather than trusting the command line alone (see Sysmon comparison table in the writeup).
+### Stateful Network Detection to Eliminate False Positives
 
-## Sample Detection
+Initially, Suricata reverse shell rules triggered on simple Nmap SYN scans because the rules matched on:
 
-**Reverse Shell / C2 Outbound (Suricata)**
+```text
+flags:S
+```
 
-| Field | Value |
-|---|---|
-| Rule ID / Level | `100304` / 12 |
-| MITRE | T1071 (Command and Control) |
-| Source → Destination | `192.168.60.1:62602` → `192.168.60.135:4444` |
-| Trigger | Outbound TCP to a known reverse-shell port list from a PowerShell TCPClient session |
+The rules were rewritten to require a successful TCP three-way handshake:
 
-**PowerShell Encoded Command (Sysmon)**
+```text
+flow:to_server,established
+```
 
-| Field | Value |
-|---|---|
-| Rule ID / Level | `100401` / 10 |
-| MITRE | T1027, T1059.001 |
-| Detection Logic | `parentImage` matches `powershell.exe` AND `commandLine` contains `-EncodedCommand` |
-| Integrity Level | High (elevated) |
+The `$HOME_NET` variable was also strictly scoped to exclude the attacker IP.
 
-More detections with full raw evidence are cataloged in the writeups' Appendix.
+This eliminated the observed false positives caused by incomplete TCP connection attempts during reconnaissance.
+
+---
+
+### Resilient pfSense Decoders
+
+A silent decoder failure was traced to variations in syslog headers, including cases where the hostname field was missing.
+
+The pipeline was redesigned to avoid depending on:
+
+```xml
+<program_name>
+```
+
+Instead, the decoder relies on:
+
+```xml
+<prematch>
+```
+
+and uses:
+
+```xml
+offset="after_parent"
+```
+
+to accurately extract ICMP, TCP, and UDP fields regardless of upstream log formatting.
+
+---
+
+### Endpoint Whitelisting for LSASS Monitoring
+
+Sysmon Event ID 10 (`ProcessAccess`) was tuned using regex-based whitelisting.
+
+Legitimate processes such as:
+
+```text
+taskmgr.exe
+MsMpEng.exe
+```
+
+were excluded where appropriate so that alerts focus on suspicious LSASS access patterns associated with credential-dumping activity.
+
+---
+
+### Overcoming Wazuh API Crashes
+
+A recurring HTTP 500 error was observed on the Wazuh Dashboard's **Manage Rules** interface.
+
+The root cause was traced to trailing commas in XML `<group>` tags, which caused the API's Python parser to fail.
+
+The issue was resolved by enforcing strict XML syntax hygiene in the custom rules.
+
+---
 
 ## Repository Structure
 
-> Adjust to match your actual folder layout.
-
-```
-.
+```text
+wazuh-soc-home-lab/
 ├── README.md
+│
+├── architecture/
+│   ├── network-topology.png
+│   └── logical-data-flow.drawio
+│
 ├── docs/
-│   ├── WU1-detection-engineering.md        # Baseline architecture, decoders, rules
-│   ├── WU2-full-attack-chain.md            # 12-stage attack simulation
-│   └── SOC-Home-Lab-Consolidated-Report.md # Merged report — IoC tables + appendix
-├── rules/
+│   ├── 01-infrastructure-setup.md
+│   ├── 02-log-ingestion-pipeline.md
+│   ├── 03-detection-engineering.md
+│   └── 04-threat-emulation-report.md
+│
+├── endpoints/
+│   └── windows-11/
+│       ├── sysmon-config.xml
+│       └── ossec.conf
+│
+├── network/
 │   ├── pfsense/
-│   │   ├── decoders/local_decoder.xml
-│   │   └── rules/local_rules.xml
-│   ├── suricata/
-│   │   └── local.rules
-│   └── sysmon/
-│       └── sysmonconfig.xml
-├── screenshots/
-│   └── *.png                               # Dashboard alert screenshots
-└── LICENSE
+│   │   └── config-backup.xml
+│   │
+│   └── suricata/
+│       ├── suricata.yaml
+│       └── local.rules
+│
+├── siem-wazuh/
+│   ├── decoders/
+│   │   └── local_decoder.xml
+│   │
+│   ├── rules/
+│   │   └── local_rules.xml
+│   │
+│   └── dashboards/
+│       └── custom-soc-dashboard.ndjson
+│
+├── threat-emulation/
+│   ├── attack-scripts/
+│   └── sample-logs/
+│
+└── screenshots/
 ```
 
-## Full Writeups
+---
 
-- 📄 **[WU1 — Detection Engineering & Baseline Architecture]()** *(link to your hosted writeup)*
-- 📄 **[WU2 — Full Attacking Chain]()** *(link to your hosted writeup)*
-- 📄 **[Consolidated Report — condensed IoC tables + full raw log appendix]()** *(link to your hosted PDF/markdown)*
+## Lessons Learned & Troubleshooting
 
-## Lessons Learned
+### Verification is Mandatory
 
-- A rule that "looks correct" in XML isn't verified until `wazuh-logtest` confirms it against a **real** raw log — several custom rules in this lab were confirmed to be silently overridden by Wazuh's built-in ruleset and only caught by comparing expected vs. actual `rule.id` in the evidence.
-- Detection logic that depends on upstream formatting assumptions (e.g., syslog hostname presence) is fragile by design — prefer matching on stable literal tokens over structured fields you don't control.
-- Correlation rules (`if_matched_sid`) only apply field constraints to the *triggering* event, not to every event counted toward the frequency threshold — worth double-checking for rules meant to filter by protocol/action across a burst window.
-- Full lessons-learned log (with root cause + fix for each issue) is in the consolidated report.
+A rule that "looks correct" in XML isn't considered verified until tested via:
 
-## Known Limitations / Future Work
+```bash
+wazuh-logtest
+```
 
-- Several rules (RDP probe, SMB probe, DNS C2, exfiltration `100413`/`100414`) are defined but not yet validated against real captured traffic.
-- Exfiltration detection is signature-based and port-scoped — acknowledged as a lab-scope simplification, not production-grade (real SOC environments need volume/behavior-based detection).
-- pfSense IPS (Legacy Blocking Mode) is intentionally not enabled in this lab to avoid self-lockout risk; noted as future work.
-- Full gap list with recommended fixes is tracked in the consolidated report's "Known Gaps" section.
+against real or representative log samples.
+
+Several custom rules were found to be silently overridden by Wazuh's default ruleset until properly prioritized and validated.
+
+---
+
+### API Sensitivity
+
+The Wazuh Manager core (`wazuh-analysisd`) can be more forgiving of certain XML configuration issues than the Wazuh API.
+
+The Dashboard's **Manage Rules** functionality proved significantly more sensitive to malformed XML syntax, reinforcing the importance of strict configuration validation.
+
+---
+
+### Behavior > Signatures
+
+Hardcoding port `4444` for reverse shells or port `4445` for exfiltration creates blind spots.
+
+Detection must focus on behavior rather than relying solely on fixed indicators.
+
+For example:
+
+- Standard web ports showing anomalous outbound activity
+- Suspicious process-to-network relationships
+- LOLBin network activity
+- Unexpected outbound connections
+- Abnormal data transfer behavior
+
+This approach provides more resilient detection logic against simple indicator changes.
+
+---
+
+## Detection Workflow
+
+The lab follows a repeatable detection-engineering workflow:
+
+```text
+Security Event / Attack Simulation
+                │
+                ▼
+          Data Collection
+                │
+                ▼
+       Decoder / Parser Logic
+                │
+                ▼
+       Detection Rule Match
+                │
+                ▼
+            Wazuh Alert
+                │
+                ▼
+           Investigation
+                │
+                ▼
+      False Positive Analysis
+                │
+                ▼
+        Rule Tuning / Update
+                │
+                ▼
+          Re-Test Detection
+                │
+                ▼
+        Document Final Result
+```
+
+---
+
+## Project Goals
+
+This lab is designed to practice the following Blue Team capabilities:
+
+- Security monitoring
+- Log collection and analysis
+- Detection engineering
+- Custom Wazuh rule development
+- Custom Wazuh decoder development
+- Network IDS/IPS monitoring
+- Endpoint telemetry analysis
+- MITRE ATT&CK mapping
+- Alert triage
+- False-positive analysis
+- Detection tuning
+- Incident investigation
+- Threat emulation
+
+---
+
+## Future Improvements
+
+Planned improvements include:
+
+- Expanding detection coverage
+- Improving alert correlation
+- Adding more endpoint telemetry sources
+- Increasing MITRE ATT&CK coverage
+- Automating detection testing
+- Improving incident-response documentation
+- Adding additional attack simulations
+- Building reusable detection test cases
+
+---
 
 ## Author
 
-Built by **Khoa** — Information Security student (UIT, Ho Chi Minh City), self-taught across DevOps/Cloud, Cybersecurity, DSA, and OOP.
+**Võ Minh Khoa**
+
+2nd-Year Information Security Student at the University of Information Technology (UIT), Ho Chi Minh City.
+
+Interested in:
+
+- Blue Team Operations
+- Security Operations Center (SOC)
+- Detection Engineering
+- Security Monitoring
+- Self-hosted Security Infrastructure
+
+---
 
 ## License
 
-This project's documentation is released under the [MIT License](LICENSE) unless noted otherwise. Attack simulation content is for educational use in an isolated, authorized lab environment only.
-README
+This project's documentation and configuration examples are released under the [MIT License](LICENSE).
+
+Attack simulation content is strictly intended for **educational purposes and authorized testing within an isolated laboratory environment**.
