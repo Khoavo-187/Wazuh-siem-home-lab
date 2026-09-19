@@ -273,35 +273,35 @@ ping <WINDOWS-IP>
 ### Windows Endpoint
 
 Windows Event Logs / Sysmon
-↓
+->
 Wazuh Agent
-↓
+->
 Wazuh Server
-↓
+->
 Wazuh Indexer
-↓
+->
 Wazuh Dashboard
 
 ### Network Traffic
 
 Network Traffic
-↓
+->
 Suricata
-↓
+->
 `eve.json`
-↓
+->
 Wazuh Server
-↓
+->
 Wazuh Dashboard
 
 ### Firewall Logs
 
 pfSense
-↓
+->
 Syslog (UDP/514)
-↓
+->
 Wazuh Server
-↓
+->
 Wazuh Dashboard
 
 ### Agent Connectivity Validation
