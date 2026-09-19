@@ -238,3 +238,76 @@ Important files:
 - eve.json– JSON alerts
 - fast.log– quick alerts
 - stats.log– system stats
+
+
+## VMware Virtual Machine Resources
+
+| VM | vCPU | RAM | Network |
+|---|---:|---:|---|
+| Wazuh Server | 4 | 8 GB | NAT + Host-only |
+| pfSense | 2 | 2 GB | NAT + Host-only |
+| Kali Linux | 2 | 4 GB | Host-only |
+| Windows 11 | 4 | 8 GB | Host-only |
+
+
+## Connectivity Validation
+
+Verify connectivity between the lab components before configuring detection rules.
+
+From Windows:
+
+```powershell=
+ping 192.168.60.137
+```
+
+From Kali
+
+```powershell=
+ping 192.168.60.254
+ping 192.168.60.137
+ping <WINDOWS-IP>
+```
+
+## Data Flow Validation
+
+### Windows Endpoint
+
+Windows Event Logs / Sysmon
+↓
+Wazuh Agent
+↓
+Wazuh Server
+↓
+Wazuh Indexer
+↓
+Wazuh Dashboard
+
+### Network Traffic
+
+Network Traffic
+↓
+Suricata
+↓
+`eve.json`
+↓
+Wazuh Server
+↓
+Wazuh Dashboard
+
+### Firewall Logs
+
+pfSense
+↓
+Syslog (UDP/514)
+↓
+Wazuh Server
+↓
+Wazuh Dashboard
+
+### Agent Connectivity Validation
+
+Verify the Wazuh agent status from:
+
+**Wazuh Dashboard → Agents management → Summary**
+
+The Windows endpoint should appear as **Active** after successful agent enrollment and connectivity.
