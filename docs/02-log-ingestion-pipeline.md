@@ -1,6 +1,6 @@
 ---
-title: "SOC Home Lab — Log ingestion
-tags: Blue Team, SOC Home Lab, log ingestion
+title: "SOC Home Lab — Log ingestion"
+tags: [Blue Team, SOC Home Lab, log ingestion]
 lang: en
 breaks: true
 ---
