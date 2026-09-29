@@ -5,6 +5,15 @@ lang: en
 breaks: true
 ---
 
+**File's origin**:
+
+| Types | File |
+|---|---|
+| Decoder pfSense | [local_decoder.xml](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-decoder/local_decoder.xml) |
+| Rule Wazuh (pfSense) | [pfsense_rules.xml](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-rules/pfsense_rules.xml) |
+| Rule Wazuh (Suricata) | [Suricata_rules.xml](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-rules/suricata_rules.xml) |
+| Rule Wazuh (Sysmon & Window Events) | [sysmon_rules.xml](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-rules/sysmon_rules.xml) |
+
 # 03 - Detection engineering 
 
 - This is the `brain` of this homelab where the raw logs are being sent from outsider to the 
