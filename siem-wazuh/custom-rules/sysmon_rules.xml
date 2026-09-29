@@ -1,0 +1,348 @@
+<group name="sysmon_local,windows">
+
+  <!-- ========================================================= -->
+  <!-- 1. PowerShell Process Creation - Sysmon Event ID 1      -->
+  <!-- ========================================================= -->
+  <rule id="100400" level="5">
+    <if_group>sysmon_event1</if_group>
+
+    <field name="win.eventdata.parentImage" type="pcre2">
+      (?i)powershell\.exe$
+    </field>
+
+    <description>
+      Sysmon: PowerShell spawned process - Parent: $(win.eventdata.parentImage) |
+      Child: $(win.eventdata.image) |
+      CMD: $(win.eventdata.commandLine) |
+      User: $(win.eventdata.user)
+    </description>
+
+    <group>process_lineage,powershell_child</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 2. PowerShell Encoded Command                             -->
+  <!-- ========================================================= -->
+  <rule id="100401" level="10">
+    <if_sid>100400</if_sid>
+
+    <field name="win.eventdata.commandLine" type="pcre2">
+      (?i)(?:^|\s)-(?:enc|encodedcommand|e)(?:\s|$)
+    </field>
+
+    <description>
+      Sysmon: Encoded PowerShell command detected from
+      $(win.eventdata.user) - possible command obfuscation
+    </description>
+
+    <mitre>
+      <id>T1027</id>
+      <id>T1059.001</id>
+    </mitre>
+
+    <group>obfuscation,suspicious_powershell</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 3. Reconnaissance / Discovery binaries - Event ID 1      -->
+  <!-- ========================================================= -->
+  <rule id="100402" level="6">
+    <if_group>sysmon_event1</if_group>
+
+    <field name="win.eventdata.image" type="pcre2">
+      (?i)(?:whoami|systeminfo|tasklist|nltest)\.exe$
+    </field>
+
+    <description>
+      Sysmon: Reconnaissance binary executed -
+      $(win.eventdata.image) by $(win.eventdata.user)
+    </description>
+
+    <mitre>
+      <id>T1033</id>
+      <id>T1082</id>
+    </mitre>
+
+    <group>lolbins,recon</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 4. LOLBin - certutil / bitsadmin - Event ID 1            -->
+  <!-- ========================================================= -->
+  <rule id="100403" level="8">
+    <if_group>sysmon_event1</if_group>
+
+    <field name="win.eventdata.image" type="pcre2">
+      (?i)(?:certutil|bitsadmin)\.exe$
+    </field>
+
+    <description>
+      Sysmon: LOLBin commonly used for download/decode -
+      $(win.eventdata.image) |
+      CMD: $(win.eventdata.commandLine)
+    </description>
+
+    <mitre>
+      <id>T1105</id>
+    </mitre>
+
+    <group>lolbins,download_execution</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 5. Suspicious outbound connection - Event ID 3          -->
+  <!-- ========================================================= -->
+  <rule id="100404" level="7">
+    <if_group>sysmon_event3</if_group>
+
+    <field name="win.eventdata.image" type="pcre2">
+      (?i)(?:powershell|cmd)\.exe$
+    </field>
+
+    <description>
+      Sysmon: Outbound network connection from
+      $(win.eventdata.image) to
+      $(win.eventdata.destinationIp):$(win.eventdata.destinationPort)
+    </description>
+
+    <mitre>
+      <id>T1071</id>
+    </mitre>
+
+    <group>network_connection,c2_suspect</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 6. File creation in sensitive paths - Event ID 11       -->
+  <!-- ========================================================= -->
+  <rule id="100405" level="7">
+    <if_group>sysmon_event_11</if_group>
+
+    <field name="win.eventdata.targetFilename" type="pcre2">
+      (?i)(?:\\Temp\\|\\AppData\\Roaming\\)
+    </field>
+
+    <description>
+      Sysmon: File created in sensitive path -
+      $(win.eventdata.targetFilename) by $(win.eventdata.image)
+    </description>
+
+    <mitre>
+      <id>T1105</id>
+    </mitre>
+
+    <group>file_creation,suspicious_path</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 7. Registry Run / RunOnce persistence - Event ID 13     -->
+  <!-- ========================================================= -->
+  <rule id="100406" level="10">
+    <if_group>sysmon_event_13</if_group>
+
+    <field name="win.eventdata.targetObject" type="pcre2">
+      (?i)\\CurrentVersion\\(?:Run|RunOnce)(?:\\|$)
+    </field>
+
+    <description>
+      Sysmon: Registry Run key modified -
+      possible persistence via $(win.eventdata.image)
+    </description>
+
+    <mitre>
+      <id>T1547.001</id>
+    </mitre>
+
+    <group>persistence,registry</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 8. Correlation - multiple reconnaissance commands        -->
+  <!-- ========================================================= -->
+  <rule id="100407" level="12" frequency="3" timeframe="120">
+    <if_matched_sid>100402</if_matched_sid>
+
+    <same_field>win.eventdata.user</same_field>
+
+    <description>
+      Sysmon: Multiple reconnaissance commands executed by
+      $(win.eventdata.user) within a short time -
+      possible active enumeration
+    </description>
+
+    <mitre>
+      <id>T1087</id>
+    </mitre>
+
+    <group>recon_burst,escalation_candidate</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 9. Failed login burst                                     -->
+  <!--    5 failed logins from the same IP within 60 seconds   -->
+  <!-- ========================================================= -->
+  <rule id="100408" level="10" frequency="5" timeframe="60" ignore="120">
+    <if_matched_sid>60122</if_matched_sid>
+
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">
+      ^-$
+    </field>
+
+    <same_field>win.eventdata.ipAddress</same_field>
+
+    <description>
+      Windows: Multiple failed logons from
+      $(win.eventdata.ipAddress) - possible brute force
+    </description>
+
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+
+    <group>authentication_attack,brute_force</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 10. Successful login after failed-login burst            -->
+  <!-- ========================================================= -->
+  <rule id="100410" level="13">
+    <if_sid>60106</if_sid>
+    <if_matched_sid>100408</if_matched_sid>
+
+    <field name="win.system.eventID">^4624$</field>
+
+    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">
+      ^-$
+    </field>
+
+    <same_field>win.eventdata.ipAddress</same_field>
+
+    <description>
+      CRITICAL: Successful login after multiple failed logon attempts
+      from $(win.eventdata.ipAddress) -
+      possible compromised credentials
+    </description>
+
+    <mitre>
+      <id>T1110</id>
+      <id>T1078</id>
+    </mitre>
+
+    <group>authentication_success,possible_compromise</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 11. LSASS Process Access - Sysmon Event ID 10            -->
+  <!-- ========================================================= -->
+  <rule id="100411" level="14">
+    <if_group>sysmon_event_10</if_group>
+
+    <field name="win.eventdata.targetImage" type="pcre2">
+      (?i)lsass\.exe$
+    </field>
+
+    <!-- Loại trừ một số tiến trình hợp lệ thường gặp -->
+    <field name="win.eventdata.sourceImage" type="pcre2" negate="yes">
+      (?i)(?:taskmgr|svchost|MsMpEng)\.exe$
+    </field>
+
+    <description>
+      CRITICAL: Unauthorized process accessed LSASS memory -
+      possible credential dumping:
+      $(win.eventdata.sourceImage) -> $(win.eventdata.targetImage)
+    </description>
+
+    <mitre>
+      <id>T1003.001</id>
+    </mitre>
+
+    <group>credential_access,lsass_access</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 12. Windows Security Event Log cleared - Event ID 1102  -->
+  <!-- ========================================================= -->
+  <rule id="100412" level="15">
+    <if_sid>60117</if_sid>
+
+    <field name="win.system.eventID">^1102$</field>
+
+    <description>
+      CRITICAL: Windows Security Event Log was cleared -
+      possible anti-forensics/cleanup on $(win.system.computer)
+    </description>
+
+    <mitre>
+      <id>T1070.001</id>
+    </mitre>
+
+    <group>log_cleared,anti_forensics</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 13. Suspicious connection to unusual port 4445         -->
+  <!-- ========================================================= -->
+  <rule id="100413" level="12">
+    <if_group>sysmon_event3</if_group>
+
+    <field name="win.eventdata.destinationPort" type="pcre2">
+      ^4445$
+    </field>
+
+    <description>
+      Suspicious outbound connection to port 4445 -
+      investigate possible command-and-control or data transfer:
+      $(win.eventdata.image) ->
+      $(win.eventdata.destinationIp):$(win.eventdata.destinationPort)
+    </description>
+
+    <mitre>
+      <id>T1041</id>
+    </mitre>
+
+    <group>exfiltration,suspicious_network</group>
+  </rule>
+
+
+  <!-- ========================================================= -->
+  <!-- 14. PowerShell / certutil network connection on 80/443  -->
+  <!-- ========================================================= -->
+  <rule id="100414" level="12">
+    <if_group>sysmon_event3</if_group>
+
+    <field name="win.eventdata.image" type="pcre2">
+      (?i)(?:powershell|certutil)\.exe$
+    </field>
+
+    <field name="win.eventdata.destinationPort" type="pcre2">
+      ^(?:80|443)$
+    </field>
+
+    <description>
+      Suspicious LOLBin outbound connection on standard web ports -
+      investigate possible download or exfiltration:
+      $(win.eventdata.image) ->
+      $(win.eventdata.destinationIp):$(win.eventdata.destinationPort)
+    </description>
+
+    <mitre>
+      <id>T1041</id>
+      <id>T1105</id>
+    </mitre>
+
+    <group>exfiltration,download_execution,suspicious_network</group>
+  </rule>
+
+</group>

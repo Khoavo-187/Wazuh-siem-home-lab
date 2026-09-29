@@ -1,0 +1,67 @@
+<group name="suricata,suricata_local">
+
+  <rule id="100300" level="5">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000002</field>
+    <description>Suricata: Possible Port Scan from $(src_ip)</description>
+    <mitre><id>T1595</id></mitre>
+    <group>recon,network_scan</group>
+  </rule>
+
+  <rule id="100301" level="8">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000003</field>
+    <description>Suricata: Repeated SSH Connection Attempts from $(src_ip)</description>
+    <mitre><id>T1110</id></mitre>
+    <group>authentication_attack</group>
+  </rule>
+
+  <rule id="100302" level="6">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000004</field>
+    <description>Suricata: RDP Connection Attempt from $(src_ip)</description>
+    <mitre><id>T1133</id></mitre>
+    <group>recon</group>
+  </rule>
+
+  <rule id="100303" level="6">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000005</field>
+    <description>Suricata: SMB Port Probe from $(src_ip)</description>
+    <mitre><id>T1046</id></mitre>
+    <group>recon</group>
+  </rule>
+
+  <rule id="100304" level="12">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000006</field>
+    <description>Suricata: Possible Reverse Shell / C2 Outbound from $(src_ip) to port $(dest_port)</description>
+    <mitre><id>T1071</id></mitre>
+    <group>command_and_control</group>
+  </rule>
+
+  <rule id="100305" level="5">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000007</field>
+    <description>Suricata: Recon Tool User-Agent (curl) Detected from $(src_ip)</description>
+    <mitre><id>T1592</id></mitre>
+    <group>recon</group>
+  </rule>
+
+  <rule id="100306" level="10">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000008</field>
+    <description>Suricata: EICAR Test File Downloaded Over HTTP - $(src_ip)</description>
+    <mitre><id>T1105</id></mitre>
+    <group>malware</group>
+  </rule>
+
+  <rule id="100307" level="9">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000009</field>
+    <description>Suricata: DNS Query to Suspicious Test Domain from $(src_ip)</description>
+    <mitre><id>T1071.004</id></mitre>
+    <group>command_and_control,dns</group>
+  </rule>
+
+</group>
