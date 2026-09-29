@@ -87,3 +87,135 @@ Since Pfsense forwards logs in a comma-seperated format (`filterlog`) , Wazuh ne
     <order>pfsense.rulenum,pfsense.tracker,pfsense.interface,pfsense.reason,action,pfsense.direction,pfsense.ipversion,pfsense.class,pfsense.flowlabel,pfsense.hoplimit,protocol,pfsense.protocol_number,pfsense.length,srcip,dstip</order>
 </decoder>
 ```
+
+
+## 2. Custom detection rules 
+
+Why do we need these custom rules?
+- While Wazuh has built-in rules, they are generic. Custom rules allow us to define exact thresholds for our specific environment (e,g: how many fail logins equal a brute force attack) and map them to the **MITRE ATT&CK** framework for better threat interlligence visualization.
+
+**File Path:** add these to `/var/ossec/etc/rules/` for adding rules for different framwworks that you want to intergrated to your Wazuh 
+Restart the manager(`sudo systemctl restart wazuh-manager`) after saving
+
+### 2.1 Pfsense firewall rules
+- **Objective**: Monitor network perimeter activity. We want to silently log allowed traffic, but trigger alerts for blocked traffic, ICMP pings, and volumetric attacks like SYN floods. Notice how Rule `100140` uses `frequency` and `timeframes` to detect a burst of connections over time.
+
+```xml=
+<group name="pfsense">
+
+  <!-- Base rule -->
+  <rule id="100100" level="1">
+    <decoded_as>pfsense-lab</decoded_as>
+    <description>pfSense: Firewall log detected</description>
+    <options>no_log</options>
+  </rule>
+
+
+<rule id="100130" level="10" frequency="15" timeframe="30" ignore="120">
+    <if_matched_sid>100100</if_matched_sid>
+    <same_source_ip />
+    <different_dstport />
+    <description>pfSense: Possible port scan from $(srcip) -
+      nhieu destination port khac nhau</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+
+    <group>network_scan,recon</group>
+</rule>
+
+
+  <!-- Block -->
+  <rule id="100101" level="5">
+    <if_sid>100100</if_sid>
+    <action>block</action>
+
+    <description>
+      pfSense: Traffic blocked
+      $(srcip):$(srcport) -> $(dstip):$(dstport)
+    </description>
+
+    <group>firewall_drop</group>
+  </rule>
+
+<!-- Ping sweep -->
+<rule id="100201" level="8" frequency="8" timeframe="30" ignore="120">
+    <if_matched_sid>100200</if_matched_sid>
+    <same_source_ip />
+    <different_dstip />
+    <description>
+      pfSense: Possible ping sweep from $(srcip) -
+      nhieu destination host khac nhau
+    </description>
+    <mitre>
+      <id>T1018</id>
+    </mitre>
+    <group>network_scan,ping_sweep</group>
+</rule>
+
+
+  <!-- Multiple blocks -->
+  <rule id="100102" level="10" frequency="10" timeframe="60" ignore="120">
+    <if_matched_sid>100101</if_matched_sid>
+    <same_source_ip />
+
+    <description>
+      pfSense: Multiple firewall blocks from $(srcip) -
+      possible scan/bruteforce
+    </description>
+
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+
+    <group>multiple_blocks,network_scan</group>
+  </rule>
+
+
+  <!-- Pass -->
+  <rule id="100110" level="3">
+    <if_sid>100100</if_sid>
+    <action>pass</action>
+
+    <description>
+      pfSense: Traffic allowed
+      $(srcip):$(srcport) -> $(dstip):$(dstport)
+    </description>
+
+    <options>no_log</options>
+
+    <group>firewall_pass</group>
+  </rule>
+
+
+
+  <!-- ICMP -->
+  <rule id="100200" level="7">
+    <if_sid>100100</if_sid>
+    <protocol>^icmp$</protocol>
+
+    <description>
+      pfSense: ICMP Ping detected
+    </description>
+
+    <group>icmp,ping,network_scan</group>
+  </rule>
+  <!-- TCP burst -->
+<rule id="100140" level="6" frequency="15" timeframe="10" ignore="60">
+    <if_matched_sid>100110</if_matched_sid>
+    <same_source_ip />
+    <same_dstip />
+    <same_dstport />
+    <protocol>^tcp$</protocol>
+    <description>
+      pfSense: Burst of TCP connections from
+      $(srcip) to $(dstip):$(dstport) -
+      Possible TCP connection flood
+    </description>
+    <group>connection_flood</group>
+</rule>
+
+</group>
+```
+
+ 
