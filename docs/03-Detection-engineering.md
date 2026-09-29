@@ -12,9 +12,9 @@ breaks: true
 | Decoder pfSense | [`local_decoder.xml`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-decoder/local_decoder.xml) |
 | Rule Wazuh (pfSense) | [`pfsense_rules.xml`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-rules/pfsense_rules.xml) |
 | Rule Wazuh (Suricata) | [`Suricata_rules.xml`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-rules/suricata_rules.xml) |
-| Rule Wazuh (Sysmon & Window Events) | [`sysmon_rules.xm`l](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-rules/sysmon_rules.xml) |
-| Suricata Configuration | [`suricata.yaml`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/Suricata_configuration/suricata.yaml) |
-| Suricata's local rules | [`local_rules`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/Suricata_configuration/local.rules) |
+| Rule Wazuh (Sysmon & Window Events) | [`sysmon_rules.xml`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/custom-rules/sysmon_rules.xml) |
+| Suricata Configuration | [`suricata.yaml`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/network/Suricata_configuration/suricata.yaml) |
+| Suricata's local rules | [`local_rules`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/siem-wazuh/network/Suricata_configuration/local.rules) |
 
 
 # 03 - Detection engineering 
