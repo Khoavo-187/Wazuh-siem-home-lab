@@ -1,0 +1,28 @@
+# ================================================================
+# LOCAL DETECTION RULES — SOC Home Lab
+# ================================================================
+
+# --- Trinh sát / quét cổng ---
+alert tcp $EXTERNAL_NET any -> $HOME_NET any (msg:"LOCAL Possible Port Scan - Multiple SYN in short time"; flow:to_server; flags:S; threshold:type both, track by_src, count 15, seconds 10; classtype:attempted-recon; metadata:mitre_tactic_id TA0043, mitre_technique_id T1595; sid:1000002; rev:3;)
+
+alert tcp $EXTERNAL_NET any -> $HOME_NET 22 (msg:"LOCAL Repeated Connection Attempts to SSH Port"; flow:to_server; flags:S; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-admin; metadata:mitre_tactic_id TA0006, mitre_technique_id T1110; sid:1000003; rev:3;)
+
+alert tcp any any -> $HOME_NET 3389 (msg:"LOCAL RDP Connection Attempt Detected"; flow:to_server; flags:S; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; metadata:mitre_tactic_id TA0001, mitre_technique_id T1133; sid:1000004; rev:2;)
+
+alert tcp any any -> $HOME_NET 445 (msg:"LOCAL SMB Port Probe Detected"; flow:to_server; flags:S; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; metadata:mitre_tactic_id TA0043, mitre_technique_id T1046; sid:1000005; rev:2;)
+
+# --- Dấu hiệu command-and-control / reverse shell ---
+alert tcp $HOME_NET any -> any [4444,1337,31337,5555] (msg:"LOCAL Possible Reverse Shell - Suspicious Outbound Port"; flow:to_server,established; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071; sid:1000006; rev:3;)
+
+# Rule behavorial : Detect reverse shell windows in every port (80/443)
+alert tcp $HOME_NET any -> any any (msg:"LOCAL Reverse shell Pattern Detected (Window CMD/Powershell)"; flow:to_server,established; content:"Microsoft Windows"; content:"(c) Microsoft Corporation"; distance:0; within:100; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071; sid:1000010; rev:2;)
+
+# --- HTTP ---
+alert http $HOME_NET any -> $EXTERNAL_NET any (msg:"LOCAL Suspicious Download via curl (Script/Executable)"; flow:to_server,established; http.user_agent; content:"curl"; nocase; http.uri; pcre:"/\.(sh|ps1|exe|bat|dll)$/i"; classtype:bad-unknown; metadata:mitre_tactic_id TA0011, mitre_technique_id T1105; sid:1000011; rev:1;)
+
+alert http any any -> any any (msg:"LOCAL Recon Tool User-Agent Detected (curl)"; flow:to_server,established; http.user_agent; content:"curl"; classtype:attempted-recon; metadata:mitre_tactic_id TA0043, mitre_technique_id T1592; sid:1000007; rev:3;)
+
+alert http any any -> $HOME_NET any (msg:"LOCAL EICAR Test File Downloaded Over HTTP"; flow:established,to_client; file_data; content:"X5O!P%@AP[4"; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1105; sid:1000008; rev:2;)
+
+# --- DNS ---
+alert dns any any -> any any (msg:"LOCAL DNS Query To Suspicious Test Domain"; dns.query; content:"malware-test.local"; nocase; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071.004; sid:1000009; rev:2;)
