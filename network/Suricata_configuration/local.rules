@@ -9,7 +9,7 @@ alert tcp $EXTERNAL_NET any -> $HOME_NET 22 (msg:"LOCAL Repeated Connection Atte
 
 alert tcp any any -> $HOME_NET 3389 (msg:"LOCAL RDP Connection Attempt Detected"; flow:to_server; flags:S; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; metadata:mitre_tactic_id TA0001, mitre_technique_id T1133; sid:1000004; rev:2;)
 
-alert tcp any any -> $HOME_NET 445 (msg:"LOCAL SMB Port Probe Detected"; flow:to_server; flags:S; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; metadata:mitre_tactic_id TA0043, mitre_technique_id T1046; sid:1000005; rev:2;)
+alert tcp any any -> $HOME_NET 445 (msg:"LOCAL SMB Port Probe Detected"; flow:to_server; flags:S; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; metadata:mitre_tactic_id TA0007, mitre_technique_id T1046; sid:1000005; rev:2;)
 
 # --- Dấu hiệu command-and-control / reverse shell ---
 alert tcp $HOME_NET any -> any [4444,1337,31337,5555] (msg:"LOCAL Possible Reverse Shell - Suspicious Outbound Port"; flow:to_server,established; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071; sid:1000006; rev:3;)
