@@ -12,7 +12,7 @@ alert tcp any any -> $HOME_NET 3389 (msg:"LOCAL RDP Connection Attempt Detected"
 alert tcp any any -> $HOME_NET 445 (msg:"LOCAL SMB Port Probe Detected"; flow:to_server; flags:S; threshold:type both, track by_src, count 5, seconds 60; classtype:attempted-recon; metadata:mitre_tactic_id TA0007, mitre_technique_id T1046; sid:1000005; rev:2;)
 
 # --- Dấu hiệu command-and-control / reverse shell ---
-alert tcp $HOME_NET any -> any [4444,1337,31337,5555] (msg:"LOCAL Possible Reverse Shell - Suspicious Outbound Port"; flow:to_server,established; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071; sid:1000006; rev:3;)
+alert tcp $HOME_NET any -> any [4444,1337,31337,5555] (msg:"LOCAL Possible Reverse Shell - Suspicious Outbound Port"; flow:to_server,established; threshold:type limit, track by_dst,count 1,second 60; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071; sid:1000006; rev:3;)
 
 # Rule behavorial : Detect reverse shell windows in every port (80/443)
 alert tcp $HOME_NET any -> any any (msg:"LOCAL Reverse shell Pattern Detected (Window CMD/Powershell)"; flow:to_server,established; content:"Microsoft Windows"; content:"(c) Microsoft Corporation"; distance:0; within:100; classtype:trojan-activity; metadata:mitre_tactic_id TA0011, mitre_technique_id T1071; sid:1000010; rev:2;)
