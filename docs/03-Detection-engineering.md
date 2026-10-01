@@ -557,5 +557,4 @@ Quick lab triggers (isolated lab VM only):
 
 Raw-log evidence for each rule (alert JSON, screenshots) belongs in the threat-emulation report.
 
-
 ---
