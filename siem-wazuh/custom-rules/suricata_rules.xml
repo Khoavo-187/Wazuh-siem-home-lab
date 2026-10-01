@@ -64,4 +64,21 @@
     <group>command_and_control,dns</group>
   </rule>
 
+  <rule id="100308" level="12">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000010</field>
+    <description>Suricata: Windows shell banner send outbound - possble reverse shell from $(src_ip) to $(dest_ip):$(dest_port)</description>
+    <mitre><id>T1071</id></mitre>
+    <group>command_and_control,reverse_shell</group>
+  </rule>
+
+  <rule id="100308" level="8">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">1000011</field>
+    <desrciption>Suricata: curl download of script or executable from $(src_ip)</description>
+    <mitre><id>T1105</id></mitre>
+    <group>command_and_control,download_execution</group>
+  </rule>
+
+
 </group>
