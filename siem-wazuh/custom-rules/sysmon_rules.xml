@@ -84,7 +84,20 @@
     <group>lolbins,download_execution</group>
   </rule>
 
+  <!-- 4.1 Rule for detecting suspicious argument for decoding -->
 
+  <rule id="100415" level="12"> 
+    <if_sid>100403</if_sid> 
+    <field name="win.eventdata.commandLine" type="prec2">(?i)(?:-urlcache|-verifyctl|-decode|/transfer|/download)</field>
+    
+    <description>Sysmon: LOLBin with download/decode arguments - $(win.eventdata.image) | CMD: $(win.eventdata.commandLine) </description>
+
+    <mitre><id>T1105</id></mitre>
+
+    <group>lolbins,download_execution</group>
+
+  </rule>
+    
   <!-- ========================================================= -->
   <!-- 5. Suspicious outbound connection - Event ID 3          -->
   <!-- ========================================================= -->
