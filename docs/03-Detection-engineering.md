@@ -31,23 +31,17 @@ breaks: true
 
 ```mermaid
 flowchart LR
-  subgraph Network
-    PF["pfSense<br/>filterlog (remote syslog)"] --> MGR
-    SU["Suricata<br/>eve.json"] --> AG
-  end
+  PF["pfSense<br/>filterlog (remote syslog)"] --> MGR
 
-  subgraph Endpoint [Windows 11 Endpoint]
+  subgraph EP["Windows 11 endpoint"]
     WIN["Windows Event Channel<br/>Security + Sysmon"] --> AG["Wazuh agent"]
-    FIM["File Integrity Monitoring<br/>(Real-time FIM)"] -->|File Hash| AG
+    SU["Suricata<br/>eve.json"] --> AG
+    FIM["FIM (realtime syscheck)"] --> AG
   end
 
   AG --> MGR["Wazuh manager<br/>predecoder → decoder → rules"]
-  
-  subgraph SIEM & Enrichment
-    MGR --> VT["VirusTotal API<br/>(Hash Reputation Check)"]
-    VT --> DASH["Indexer / Dashboard"]
-    MGR --> DASH
-  end
+  MGR <-->|"hash lookup"| VT["VirusTotal API"]
+  MGR --> DASH["Indexer / Dashboard"]
 ```
 
 | Source | Transport | Decoder | Parent rule |
