@@ -346,27 +346,6 @@ Every wrapper has the same shape:
 - Level and MITRE ID are assigned here (not in Suricata), so severity can be tuned without touching the sensor.
 - The `field` value is a pattern match, not an equality test. Anchor it (`^1000002$`) so a future sid such as `10000021` cannot match by accident.
 
-#### Gap: sids `1000010` and `1000011` have no wrapper
-Their alerts only reach the generic built-in rule at its default level. Proposed wrappers (not yet deployed):
-
-```xml
-<rule id="100308" level="12">
-  <if_sid>86601</if_sid>
-  <field name="alert.signature_id">^1000010$</field>
-  <description>Suricata: Windows shell banner sent outbound - possible reverse shell from $(src_ip) to $(dest_ip):$(dest_port)</description>
-  <mitre><id>T1071</id></mitre>
-  <group>command_and_control,reverse_shell</group>
-</rule>
-
-<rule id="100309" level="8">
-  <if_sid>86601</if_sid>
-  <field name="alert.signature_id">^1000011$</field>
-  <description>Suricata: curl download of script or executable from $(src_ip)</description>
-  <mitre><id>T1105</id></mitre>
-  <group>command_and_control,download_execution</group>
-</rule>
-```
-
 ---
 
 ## 3. Sysmon & Windows Security events
