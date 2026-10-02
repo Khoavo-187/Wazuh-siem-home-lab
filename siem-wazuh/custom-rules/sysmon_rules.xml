@@ -88,7 +88,7 @@
 
   <rule id="100415" level="12"> 
     <if_sid>100403</if_sid> 
-    <field name="win.eventdata.commandLine" type="prec2">(?i)(?:-urlcache|-verifyctl|-decode|/transfer|/download)</field>
+    <field name="win.eventdata.commandLine" type="prec2">(?i)[-/](?:urlcache|verifyctl|decode(?:hex)?|transfer|addfile|setnotifycmdline)\b</field>
     
     <description>Sysmon: LOLBin with download/decode arguments - $(win.eventdata.image) | CMD: $(win.eventdata.commandLine) </description>
 
