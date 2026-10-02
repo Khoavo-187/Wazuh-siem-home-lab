@@ -1,5 +1,22 @@
 <group name="sysmon_local,windows">
 
+    <!-- ========================================================= -->
+  <!-- 1.2. PowerShell Encoded Command                             -->
+  <!-- ========================================================= -->
+
+  
+  <rule id="100401" level="10">
+    <if_group>sysmon_event1</if_group>
+    
+    <field name="win.eventdata.image" type="prec2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="prec2">(?i)(?:^|\s)[-/](?:e|ec|en[a-z]*)\s+\S{20,}</field>
+    
+    <description>Sysmon: Encoded Powershell command from $(win.eventdata.user) - possible command obfuscation | parent:$(win.eventdata.parentImage) | CMD" $(win.eventdata.commandLine) </description>
+    <mitre><id>T1027</id><id>T1059.001</id></mitre>
+
+    <group>obfuscation,suspicious_powershell</group>
+  </rule>
+
   <!-- ========================================================= -->
   <!-- 1. PowerShell Process Creation - Sysmon Event ID 1      -->
   <!-- ========================================================= -->
@@ -14,36 +31,11 @@
       Sysmon: PowerShell spawned process - Parent: $(win.eventdata.parentImage) |
       Child: $(win.eventdata.image) |
       CMD: $(win.eventdata.commandLine) |
-      User: $(win.eventdata.user)
+      User: $(win.eventdata.user
     </description>
 
     <group>process_lineage,powershell_child</group>
   </rule>
-
-
-  <!-- ========================================================= -->
-  <!-- 2. PowerShell Encoded Command                             -->
-  <!-- ========================================================= -->
-  <rule id="100401" level="10">
-    <if_sid>100400</if_sid>
-
-    <field name="win.eventdata.commandLine" type="pcre2">
-      (?i)(?:^|\s)-(?:enc|encodedcommand|e)(?:\s|$)
-    </field>
-
-    <description>
-      Sysmon: Encoded PowerShell command detected from
-      $(win.eventdata.user) - possible command obfuscation
-    </description>
-
-    <mitre>
-      <id>T1027</id>
-      <id>T1059.001</id>
-    </mitre>
-
-    <group>obfuscation,suspicious_powershell</group>
-  </rule>
-
 
   <!-- ========================================================= -->
   <!-- 3. Reconnaissance / Discovery binaries - Event ID 1      -->
