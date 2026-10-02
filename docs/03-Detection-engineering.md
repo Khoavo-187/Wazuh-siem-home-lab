@@ -308,7 +308,7 @@ Same pattern on port 445. The metadata pairs T1046 (Network Service Discovery) w
 #### `1000006` — Possible reverse shell, suspicious outbound port
 - Source `$HOME_NET` → any, ports `4444` (Metasploit default), `1337`, `31337`, `5555`.
 - Revision 3 replaced `flags:S` with `flow:to_server,established`, so only connections that completed the handshake match. This removed the false positives caused by Nmap SYN scans (a half-open probe never reaches `established`).
-- Side effect: without a `threshold`, every packet of the established flow can alert. Add `threshold:type limit, track by_dst, count 1, seconds 60` to get one alert per flow window.
+- Add `threshold:type limit, track by_dst, count 1, seconds 60` to get one alert per flow window.
 - Port lists are easy to evade (see *Behaviour over signatures* in the README); `1000010` complements it.
 
 #### `1000007` — Recon tool user-agent (curl)
