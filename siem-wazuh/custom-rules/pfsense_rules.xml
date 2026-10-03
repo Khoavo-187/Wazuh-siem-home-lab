@@ -87,15 +87,14 @@
 
 
   <!-- ICMP -->
-  <rule id="100200" level="7">
+  <rule id="100200" level="3">
     <if_sid>100100</if_sid>
     <protocol>^icmp$</protocol>
-
     <description>
       pfSense: ICMP Ping detected
     </description>
-
-    <group>icmp,ping,network_scan</group>
+    <options>no_log</options>
+    <group>icmp,ping</group>
   </rule>
   <!-- TCP burst -->
 <rule id="100140" level="6" frequency="15" timeframe="10" ignore="60">
@@ -104,10 +103,11 @@
     <same_dstip />
     <same_dstport />
     <protocol>^tcp$</protocol>
+    <dstport>^(?:22|23|445|3389|5900|1433|3306)$</dstport>
     <description>
       pfSense: Burst of TCP connections from
       $(srcip) to $(dstip):$(dstport) -
-      Possible TCP connection flood
+      Possible TCP connection floodc on admin access
     </description>
     <group>connection_flood</group>
 </rule>
