@@ -253,15 +253,17 @@
     <if_group>sysmon_event_10</if_group>
 
     <field name="win.eventdata.targetImage" type="pcre2">
-      (?i)lsass\.exe$
+      (?i)\\lsass\.exe$
     </field>
 
     <!-- Loại trừ một số tiến trình hợp lệ thường gặp -->
     <field name="win.eventdata.sourceImage" type="pcre2" negate="yes">
-      (?i)(?:taskmgr|svchost|MsMpEng)\.exe$
+      (?i)^C:\\Windows\\System32\\(?:svchost|taskmgr|wininit|csrss|services|lsass|wbem\\WmPrvSE)\.exe$|^C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\[^\\]+\\MsMpEng\.exe$|^C:\\Program Files\\Windows Defender\\MsMpEng\.exe$
     </field>
-
-    <description>
+     
+    <field name="win.eventdata.grantedAccess" type="prec2">(?i)^0x(?:1010|1410|1438|143a|1f0fff|1f1fff|1f3fff|1fffff)$</field>
+ 
+   <description>
       CRITICAL: Unauthorized process accessed LSASS memory -
       possible credential dumping:
       $(win.eventdata.sourceImage) -> $(win.eventdata.targetImage)
@@ -274,6 +276,19 @@
     <group>credential_access,lsass_access</group>
   </rule>
 
+
+  <rule id="100416" level="15">
+     <if_sid>100411</if_sid>
+     
+     <field name="win.eventdata.callTrace" type="prec2">(?i)(?:dbgcore|dgbhelp)\.dll|UNKNOWN</field>
+
+     <description>CRITICAL: LSASS access with memory-dump call trace (MiniWriteDump or Unbacked code): $(win.eventdata.SourceImage)</description>
+     <mitre>
+       <id>T1003.001</id>
+     </mitre>
+
+     <group>credential_access,lsass_access</group>
+  </rule>
 
   <!-- ========================================================= -->
   <!-- 12. Windows Security Event Log cleared - Event ID 1102  -->
