@@ -232,26 +232,36 @@ wazuh-soc-home-lab/
 │
 ├── endpoints/
 │   └── windows-11/
-│       ├── sysmon-config.xml
-│       └── ossec.conf
-│
+│   │   ├── sysmon-config.xml
+│   │   └── ossec.conf
+│   |
+|   |___ manager/
+|        ├──m_ossec.conf
+|
+|
+|
+|
 ├── network/
-│   ├── pfsense/
+│   ├── pfsense_config/
 │   │   └── config-backup.xml
 │   │
-│   └── suricata/
+│   └── suricata_configuration/
 │       ├── suricata.yaml
 │       └── local.rules
 │
+|
+|
+|
+|
 ├── siem-wazuh/
-│   ├── decoders/
+│   ├── custom_dcecoders/
 │   │   └── local_decoder.xml
 │   │
-│   ├── rules/
-│   │   └── local_rules.xml
-│   │
-│   └── dashboards/
-│       └── custom-soc-dashboard.ndjson
+│   ├── custom_rules/
+│       └── pfsense_rules.xml
+│       |__ suricata_rules.xml
+│       |__ sysmon_rules.xml
+│       
 │
 ├── threat-emulation/
 │   ├── attack-scripts/
