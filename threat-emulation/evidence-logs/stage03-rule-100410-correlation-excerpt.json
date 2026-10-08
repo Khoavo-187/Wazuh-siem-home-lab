@@ -1,0 +1,10 @@
+{
+  "rule": {
+    "id": "100410",
+    "level": 13,
+    "description": "CRITICAL: Successful login (4624) immediately following brute force attempts from 192.168.60.135"
+  },
+  "data": {
+    "srcip": "192.168.60.135"
+  }
+}

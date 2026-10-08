@@ -1,0 +1,76 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.28",
+  "_id": "TY80R6AB52b8xqz7JQXq",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "src_ip": "192.168.60.135",
+      "src_port": "8000",
+      "dest_ip": "192.168.60.1",
+      "dest_port": "58826",
+      "proto": "TCP",
+      "alert": {
+        "severity": "1",
+        "signature_id": "1000008",
+        "rev": "2",
+        "metadata": {
+          "mitre_tactic_id": [
+            "TA0011"
+          ],
+          "mitre_technique_id": [
+            "T1105"
+          ]
+        },
+        "signature": "LOCAL EICAR Test File Downloaded Over HTTP",
+        "action": "allowed",
+        "category": "A Network Trojan was detected"
+      },
+      "http": {
+        "hostname": "192.168.60.135",
+        "http_method": "GET",
+        "url": "/eicar-facebook.com",
+        "http_user_agent": "curl/8.21.0",
+        "status": "200"
+      },
+      "files": [
+        {
+          "filename": "/eicar-facebook.com",
+          "size": 69,
+          "state": "CLOSED"
+        }
+      ],
+      "timestamp": "2026-08-28T14:09:53.300673+0700"
+    },
+    "rule": {
+      "firedtimes": 1,
+      "level": 10,
+      "description": "Suricata: EICAR Test File Downloaded Over HTTP - 192.168.60.135",
+      "groups": [
+        "suricata",
+        "suricata_local",
+        "malware"
+      ],
+      "mitre": {
+        "technique": [
+          "Ingress Tool Transfer"
+        ],
+        "id": [
+          "T1105"
+        ],
+        "tactic": [
+          "Command and Control"
+        ]
+      },
+      "id": "100306"
+    },
+    "location": "C:\\Program Files\\Suricata\\log\\eve.json",
+    "decoder": {
+      "name": "json"
+    },
+    "timestamp": "2026-08-28T07:09:53.661+0000"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.28",
+  "_id": "_I7nRqAB52b8xqz7HZgY",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "src_ip": "192.168.60.135",
+      "src_port": "51814",
+      "dest_ip": "192.168.60.1",
+      "dest_port": "22",
+      "proto": "TCP",
+      "alert": {
+        "severity": "1",
+        "signature_id": "1000003",
+        "rev": "2",
+        "metadata": {
+          "mitre_tactic_id": [
+            "TA0006"
+          ],
+          "mitre_technique_id": [
+            "T1110"
+          ]
+        },
+        "signature": "LOCAL Repeated Connection Attempts to SSH Port",
+        "action": "allowed",
+        "category": "Attempted Administrator Privilege Gain"
+      },
+      "timestamp": "2026-08-28T12:45:44.747457+0700"
+    },
+    "rule": {
+      "firedtimes": 3,
+      "level": 8,
+      "description": "Suricata: Repeated SSH Connection Attempts from 192.168.60.135",
+      "groups": [
+        "suricata",
+        "suricata_local",
+        "authentication_attack"
+      ],
+      "mitre": {
+        "technique": [
+          "Brute Force"
+        ],
+        "id": [
+          "T1110"
+        ],
+        "tactic": [
+          "Credential Access"
+        ]
+      },
+      "id": "100301"
+    },
+    "location": "C:\\Program Files\\Suricata\\log\\eve.json",
+    "decoder": {
+      "name": "json"
+    },
+    "timestamp": "2026-08-28T05:45:44.697+0000"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.28",
+  "_id": "wI7oRqAB52b8xqz7AZ6p",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "win": {
+        "eventdata": {
+          "targetUserName": "LENOVO",
+          "subjectDomainName": "WORKGROUP",
+          "targetDomainName": "LAPTOP-VF92GC15",
+          "targetSid": "S-1-5-21-701014724-483482641-3546372724-1001",
+          "subjectUserName": "LAPTOP-VF92GC15$"
+        },
+        "system": {
+          "eventID": "4740",
+          "channel": "Security",
+          "computer": "LAPTOP-VF92GC15"
+        }
+      }
+    },
+    "rule": {
+      "level": 9,
+      "description": "User account locked out (multiple login errors)",
+      "groups": [
+        "windows",
+        "windows_security",
+        "authentication_failures"
+      ],
+      "firedtimes": 1,
+      "mitre": {
+        "technique": [
+          "Brute Force",
+          "Account Access Removal"
+        ],
+        "id": [
+          "T1110",
+          "T1531"
+        ],
+        "tactic": [
+          "Credential Access",
+          "Impact"
+        ]
+      },
+      "id": "60115"
+    },
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "timestamp": "2026-08-28T05:46:44.233+0000"
+  }
+}

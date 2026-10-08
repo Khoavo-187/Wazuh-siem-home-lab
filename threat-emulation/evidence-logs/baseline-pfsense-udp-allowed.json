@@ -1,0 +1,35 @@
+{
+  "_index": "wazuh-archives-4.x-2026.08.09",
+  "_source": {
+    "data": {
+      "protocol": "udp",
+      "srcip": "192.168.254.101",
+      "pfsense": {
+        "reason": "match",
+        "rulenum": "76",
+        "interface": "em0",
+        "ttl": "63",
+        "direction": "out"
+      },
+      "dstport": "53",
+      "action": "pass",
+      "srcport": "20455",
+      "dstip": "8.8.8.8"
+    },
+    "rule": {
+      "firedtimes": 1791,
+      "level": 3,
+      "description": "pfSense: Traffic allowed 192.168.254.101:20455 -> 8.8.8.8:53",
+      "groups": [
+        "pfsense",
+        "firewall_pass"
+      ],
+      "id": "100110"
+    },
+    "decoder": {
+      "name": "pfsense-lab"
+    },
+    "full_log": "Aug 9 05:56:36 filterlog[63489]: 76,,,1000002661,em0,match,pass,out,4,0x0,,63,4250,0,none,17,udp,64,192.168.254.101,8.8.8.8,20455,53,44",
+    "timestamp": "2026-08-09T05:56:36.860+0000"
+  }
+}

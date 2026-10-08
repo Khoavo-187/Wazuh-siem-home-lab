@@ -1,0 +1,56 @@
+{
+  "_index": "wazuh-archives-4.x-2026.08.28",
+  "_id": "3o7oRqAB52b8xqz7AZ6q",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "win": {
+        "eventdata": {
+          "targetUserName": "lenovo",
+          "targetDomainName": "LAPTOP-VF92GC15",
+          "processName": "C:\\Windows\\System32\\OpenSSH\\sshd.exe",
+          "failureReason": "%%2313",
+          "logonType": "8",
+          "subjectUserName": "LAPTOP-VF92GC15$",
+          "status": "0xc000006d"
+        },
+        "system": {
+          "eventID": "4625",
+          "channel": "Security",
+          "computer": "LAPTOP-VF92GC15",
+          "providerName": "Microsoft-Windows-Security-Auditing"
+        }
+      }
+    },
+    "rule": {
+      "level": 5,
+      "description": "Logon Failure - Unknown user or bad password",
+      "groups": [
+        "windows",
+        "windows_security",
+        "authentication_failed"
+      ],
+      "firedtimes": 607,
+      "mitre": {
+        "technique": [
+          "Account Access Removal"
+        ],
+        "id": [
+          "T1531"
+        ],
+        "tactic": [
+          "Impact"
+        ]
+      },
+      "id": "60122"
+    },
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "timestamp": "2026-08-28T05:46:44.247+0000"
+  }
+}
