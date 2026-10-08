@@ -72,7 +72,7 @@ A rule can only fire if its event exists. Before the run these items were checke
 |---|---|---|
 | Windows | Advanced audit policy: Logon (success and failure), Process Creation with command line | Events `4624`, `4625`, `4688` |
 | Sysmon | Event IDs 1, 3, 10, 11, 13 present in the configuration | Stages 4–8b, 11 |
-| Wazuh agent | Channels `Security`, `Sysmon/Operational`; Suricata `eve.json`; FIM `realtime="yes"` on the `virustotaltest` folder | All |
+| Wazuh agent | Channels `Security`, `Sysmon/Operational`; Suricata `eve.json`; FIM `realtime="yes"` on the `virustotaltest` folder(only use for folder `/virustotaltest`)  | All |
 | Wazuh manager | Custom rules loaded (`wazuh-logtest`), VirusTotal integration active | All |
 | Environment | NTP synced on all hosts, clean dashboard baseline, start timestamp recorded (`date -u`), `procdump.exe` pre-staged | Timeline, Stage 8b |
 
