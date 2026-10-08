@@ -71,44 +71,8 @@ Attack / Suspicious Behavior
 The majority of the current attack-chain testing was performed with the Kali attacker and Windows victim on the **same `192.168.60.0/24` LAN segment**.
 
 This means that the main attack traffic used in the current threat-emulation runs is **east-west traffic** and does **not necessarily traverse pfSense**.
+<img width="2136" height="1716" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/af62cab1-d2f0-4097-bf22-800a6f821334" />
 
-```text
-                    CURRENTLY TESTED
-
-         VMware Host-Only / Internal LAN
-                 192.168.60.0/24
-
-        ┌───────────────────────────────┐
-        │                               │
-        │  Kali Linux                   │
-        │  192.168.60.135               │
-        │  Attacker                     │
-        │       │                       │
-        │       │ Attack traffic        │
-        │       ▼                       │
-        │  Windows 11                   │
-        │  192.168.60.1                 │
-        │  Victim                       │
-        │                               │
-        └───────────────────────────────┘
-
-                 │
-                 │ Security telemetry
-                 ▼
-
-        ┌───────────────────────────────┐
-        │        Wazuh Manager          │
-        │        192.168.60.137         │
-        │                               │
-        │ Manager + Indexer + Dashboard │
-        └───────────────────────────────┘
-
-
-pfSense is present as the lab firewall/gateway:
-
-WAN  192.168.254.101
-LAN  192.168.60.254
-```
 
 ### Important Network Behavior
 
@@ -175,29 +139,8 @@ and Kali can also use:
 ```
 
 A future external-attacker test will use a topology conceptually similar to:
+<img width="1590" height="2458" alt="mermaid-diagram (1)" src="https://github.com/user-attachments/assets/1f712357-de46-46b6-a29c-c822900335da" />
 
-```text
-              EXTERNAL / WAN SIDE
-
-        Kali Attacker
-        192.168.254.100
-                │
-                │
-                ▼
-        ┌─────────────────┐
-        │     pfSense     │
-        │ WAN .101        │
-        │ LAN .254        │
-        └────────┬────────┘
-                 │
-                 │ Forwarded traffic
-                 ▼
-          Windows Victim
-          192.168.60.1
-                 │
-                 ▼
-             Wazuh
-```
 
 This scenario has **not yet been fully validated as part of the attack chain**.
 
