@@ -130,7 +130,7 @@ nmap -sS -T4 -p- 192.168.60.1
 ping -c 5 192.168.60.1
 ```
 
-![Figure 2 — Stage 1 evidence screenshot](https://hackmd.io/_uploads/Sk-LnqADfl.png](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage1_recon.png))
+![Figure 2 — Stage 1 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage1_recon.png)
 
 *Figure 2 — Stage 1: reconnaissance evidence screenshot (as placed in the original writeup).*
 
