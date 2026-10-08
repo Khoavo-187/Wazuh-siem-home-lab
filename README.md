@@ -1,6 +1,6 @@
-# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + Virustotal
+# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + VirusTotal
 
-> A self-built Security Operations Center home lab for practicing detection engineering, MITRE ATT&CK-mapped attack simulation, and log correlation — built as a Blue Team portfolio project.
+> A self-built Security Operations Center home lab focused on detection engineering, endpoint telemetry, network monitoring, MITRE ATT&CK-mapped threat emulation, and multi-source alert correlation.
 
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1e6d90)
 ![Suricata](https://img.shields.io/badge/IDS%2FIPS-Suricata-cc0000)
@@ -13,397 +13,1081 @@
 
 ---
 
-## Table of Contents
+## 📌 Project Overview
 
-- [Overview](#overview)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Attack Chain & MITRE ATT&CK Coverage](#attack-chain--mitre-attck-coverage)
-- [Detection Engineering Highlights](#detection-engineering-highlights)
-- [Repository Structure](#repository-structure)
-- [Lessons Learned & Troubleshooting](#lessons-learned--troubleshooting)
-- [Author](#author)
-- [License](#license)
+This project is a self-hosted SOC home lab built to practice:
+
+- Security monitoring
+- Detection engineering
+- Custom Wazuh decoders and rules
+- Network IDS monitoring with Suricata
+- Firewall telemetry with pfSense
+- Windows endpoint telemetry with Sysmon
+- File Integrity Monitoring (FIM)
+- VirusTotal threat-intelligence enrichment
+- MITRE ATT&CK mapping
+- Threat emulation and alert validation
+- False-positive analysis and detection tuning
+
+The main goal is not simply to deploy several security tools, but to reproduce the workflow of a detection engineer:
+
+```text
+Attack / Suspicious Behavior
+            │
+            ▼
+       Data Collection
+            │
+            ▼
+        Parsing / Decoder
+            │
+            ▼
+       Detection Rule
+            │
+            ▼
+        Wazuh Alert
+            │
+            ▼
+        Investigation
+            │
+            ▼
+   False Positive Analysis
+            │
+            ▼
+       Rule Tuning
+            │
+            ▼
+        Re-Test
+            │
+            ▼
+      Final Evidence
+```
 
 ---
 
-## Overview
+# 🏗️ Current Lab Architecture
 
-This repository documents a fully self-hosted SOC home lab built to practice **Blue Team detection engineering** end-to-end.
+## Tested Environment
 
-The project spans from writing custom Wazuh decoders and rules against raw pfSense and Suricata logs, to simulating a full 11-stage attack chain (**Reconnaissance → Exfiltration**) mapped to the MITRE ATT&CK framework.
+The majority of the current attack-chain testing was performed with the Kali attacker and Windows victim on the **same `192.168.60.0/24` LAN segment**.
 
-The lab was built and debugged from scratch to demonstrate the actual workflow of a detection engineer:
+This means that the main attack traffic used in the current threat-emulation runs is **east-west traffic** and does **not necessarily traverse pfSense**.
 
-1. Writing a rule
-2. Generating the corresponding behavior
-3. Analyzing false positives
-4. Tuning the detection logic
-5. Verifying the final alert
+```text
+                    CURRENTLY TESTED
+
+         VMware Host-Only / Internal LAN
+                 192.168.60.0/24
+
+        ┌───────────────────────────────┐
+        │                               │
+        │  Kali Linux                   │
+        │  192.168.60.135               │
+        │  Attacker                     │
+        │       │                       │
+        │       │ Attack traffic        │
+        │       ▼                       │
+        │  Windows 11                   │
+        │  192.168.60.1                 │
+        │  Victim                       │
+        │                               │
+        └───────────────────────────────┘
+
+                 │
+                 │ Security telemetry
+                 ▼
+
+        ┌───────────────────────────────┐
+        │        Wazuh Manager          │
+        │        192.168.60.137         │
+        │                               │
+        │ Manager + Indexer + Dashboard │
+        └───────────────────────────────┘
+
+
+pfSense is present as the lab firewall/gateway:
+
+WAN  192.168.254.101
+LAN  192.168.60.254
+```
+
+### Important Network Behavior
+
+When Kali uses:
+
+```text
+192.168.60.135
+```
+
+to attack:
+
+```text
+192.168.60.1
+```
+
+both hosts are in the same `/24` subnet.
+
+Therefore, the current attack path is conceptually:
+
+```text
+Kali
+192.168.60.135
+      │
+      │ East-West traffic
+      ▼
+Windows
+192.168.60.1
+      │
+      ├── Sysmon
+      ├── Suricata
+      ├── Wazuh Agent
+      └── FIM
+             │
+             ▼
+       Wazuh Manager
+       192.168.60.137
+```
+
+The traffic above is **not expected to traverse the pfSense LAN interface simply because pfSense exists on the same network**.
+
+pfSense instead acts as the firewall/gateway and telemetry source for traffic that actually crosses its interfaces.
 
 ---
 
-## Architecture
+# 🌐 Planned External-Attacker Scenario
 
-| Component | Role | IP |
+The lab also contains a WAN-side network:
+
+```text
+192.168.254.0/24
+```
+
+with:
+
+```text
+pfSense WAN
+192.168.254.101
+```
+
+and Kali can also use:
+
+```text
+192.168.254.100
+```
+
+A future external-attacker test will use a topology conceptually similar to:
+
+```text
+              EXTERNAL / WAN SIDE
+
+        Kali Attacker
+        192.168.254.100
+                │
+                │
+                ▼
+        ┌─────────────────┐
+        │     pfSense     │
+        │ WAN .101        │
+        │ LAN .254        │
+        └────────┬────────┘
+                 │
+                 │ Forwarded traffic
+                 ▼
+          Windows Victim
+          192.168.60.1
+                 │
+                 ▼
+             Wazuh
+```
+
+This scenario has **not yet been fully validated as part of the attack chain**.
+
+Therefore, this repository currently distinguishes between:
+
+| Scenario | Status |
+|---|---|
+| Kali `192.168.60.135` → Windows `192.168.60.1` | ✅ Tested |
+| East-west detection on Windows Suricata | ✅ Tested |
+| Windows endpoint telemetry via Sysmon/Wazuh | ✅ Tested |
+| pfSense firewall telemetry | ✅ Tested |
+| External attacker → pfSense → Windows | ⚠️ Planned / not fully validated |
+| Full attack chain through the pfSense perimeter | ⚠️ Not yet validated |
+
+---
+
+# 🧩 Components
+
+| Component | Role | Current Address |
 |---|---|---|
-| **Wazuh Manager** | SIEM/XDR — manager + indexer + dashboard | `192.168.60.137` |
-| **Windows 11 Endpoint** | Wazuh Agent, Sysmon, victim machine | `192.168.60.1` |
-| **Kali Linux** | Attacker machine | `192.168.60.135` |
-| **pfSense** | Firewall/gateway, forwards `filterlog` via syslog | `192.168.60.254` |
-| **Suricata (x2)** | IDS on pfSense WAN + IDS on Windows endpoint | — |
+| **Wazuh Manager** | Central SIEM/XDR, rule engine, alert processing | `192.168.60.137` |
+| **Wazuh Indexer** | Alert indexing and search backend | `192.168.60.137` |
+| **Wazuh Dashboard** | Investigation and visualization | `192.168.60.137` |
+| **Windows 11** | Victim endpoint, Wazuh Agent, Sysmon, Suricata | `192.168.60.1` |
+| **Kali Linux** | Attack / threat-emulation host | `192.168.60.135` |
+| **pfSense** | Firewall / gateway / network telemetry source | WAN `192.168.254.101`, LAN `192.168.60.254` |
+| **Suricata** | Network IDS | Windows endpoint + pfSense deployment |
+| **Sysmon** | Windows endpoint telemetry | Windows 11 |
+| **VirusTotal** | File reputation enrichment | Wazuh Manager integration |
+| **VMware** | Virtualization platform | — |
+
+---
+
+# 🔍 Detection Architecture
+
+The lab uses multiple telemetry layers instead of relying on a single detection source.
 
 ```text
-Kali (Attacker)
-      │
-      ▼
-pfSense (Firewall / Gateway)
-      │
-      ▼
-Windows 11
-(Wazuh Agent + Sysmon + Suricata IDS)
-      │
-      ▼
+                         ┌──────────────────────┐
+                         │      Kali Linux      │
+                         │      Attacker        │
+                         └──────────┬───────────┘
+                                    │
+                         Attack / Suspicious Activity
+                                    │
+                  ┌─────────────────┴─────────────────┐
+                  │                                   │
+                  ▼                                   ▼
+        ┌──────────────────┐                ┌──────────────────┐
+        │     pfSense      │                │ Windows Endpoint │
+        │ Firewall / WAN   │                │                  │
+        │ / LAN telemetry  │                │ Sysmon           │
+        └────────┬─────────┘                │ Suricata         │
+                 │                          │ FIM              │
+                 │ Syslog                   └────────┬─────────┘
+                 │                                    │
+                 │                                    │
+                 └────────────────┬───────────────────┘
+                                  │
+                                  ▼
+                        ┌────────────────────┐
+                        │   Wazuh Manager    │
+                        │                    │
+                        │ Predecoder         │
+                        │ Decoder            │
+                        │ Detection Rules    │
+                        │ Correlation        │
+                        └─────────┬──────────┘
+                                  │
+                                  ▼
+                        ┌────────────────────┐
+                        │   Wazuh Indexer    │
+                        └─────────┬──────────┘
+                                  │
+                                  ▼
+                        ┌────────────────────┐
+                        │ Wazuh Dashboard    │
+                        └────────────────────┘
+```
+
+---
+
+# 📡 Telemetry Sources
+
+## 1. pfSense
+
+pfSense provides:
+
+- Firewall logs
+- Allowed/blocked connection telemetry
+- Network metadata
+- Syslog forwarding to Wazuh
+
+The current pfSense configuration forwards logs to:
+
+```text
 Wazuh Manager
-(SIEM/XDR)
+192.168.60.137:514
 ```
 
-### Defense-in-Depth Design
-
-The two-tier Suricata deployment follows a **defense-in-depth** strategy.
-
-A single perimeter IDS on pfSense may miss **east-west traffic** between internal hosts. Therefore, a second Suricata instance runs directly on the monitored Windows endpoint to provide additional host-level network visibility.
-
----
-
-## Tech Stack
-
-### SIEM / XDR
-
-- **Wazuh**
-
-### Network Security
-
-- **Suricata**
-  - Custom local detection rules
-- **pfSense**
-  - Firewall
-  - Syslog forwarding
-  - Custom `filterlog` decoders
-
-### Endpoint Security
-
-- **Sysmon**
-  - Process lineage monitoring
-  - Registry monitoring
-  - LSASS access monitoring
-
-### Threat Intelligence
-
-- **VirusTotal API**
-  - File Integrity Monitoring (FIM) enrichment
-
-### Virtualization
-
-- **VMware**
-
-### Attack / Simulation Tooling
-
-- **Nmap**
-- **Hydra**
-- **Netcat**
-- **PowerShell**
-  - Encoded commands
-  - Reverse shells
-- **Procdump**
-
----
-
-## Attack Chain & MITRE ATT&CK Coverage
-
-A full simulation scenario was executed and validated against actual Wazuh alerts.
-
-| Stage | Tactic | Technique | Detection Source |
-|---|---|---|---|
-| Reconnaissance | Reconnaissance | T1595, T1018 | Suricata, pfSense |
-| Brute Force | Credential Access | T1110 | Suricata, Windows Event 4625 |
-| Initial Access | Initial Access | T1078 | Windows Event Log, Correlation Rule |
-| Execution | Execution | T1059.001, T1027 | Sysmon (Encoded PowerShell) |
-| Discovery | Discovery | T1087, T1082, T1033 | Sysmon (Process Lineage, LOLBins) |
-| Payload Delivery | Command and Control | T1105 | Suricata, FIM, VirusTotal |
-| Persistence | Persistence | T1547.001 | Sysmon (Registry Run Key) |
-| Command & Control | Command and Control | T1071 | Suricata (Reverse Shell) |
-| Credential Access | Credential Access | T1003.001 | Sysmon (LSASS Memory Access) |
-| Anti-Forensics | Defense Evasion | T1070.001 | Windows Event 1102 (Log Cleared) |
-| Exfiltration | Exfiltration | T1041 | Sysmon (Network Connection) |
-
----
-
-## Detection Engineering Highlights
-
-Beyond writing standard rules, this project involved significant troubleshooting and logic tuning.
-
-### Stateful Network Detection to Eliminate False Positives
-
-Initially, Suricata reverse shell rules triggered on simple Nmap SYN scans because the rules matched on:
+The custom decoder parses pfSense `filterlog` records into fields such as:
 
 ```text
-flags:S
+srcip
+dstip
+srcport
+dstport
+protocol
+action
+interface
 ```
 
-The rules were rewritten to require a successful TCP three-way handshake:
+Custom pfSense rules provide detection for:
+
+- Multiple firewall blocks
+- Possible port scanning
+- Ping sweeps
+- TCP connection bursts
+
+### Important limitation
+
+pfSense is not assumed to observe every packet in the lab.
+
+For example:
 
 ```text
-flow:to_server,established
+Kali 192.168.60.135
+        │
+        │ same LAN
+        ▼
+Windows 192.168.60.1
 ```
 
-The `$HOME_NET` variable was also strictly scoped to exclude the attacker IP.
-
-This eliminated the observed false positives caused by incomplete TCP connection attempts during reconnaissance.
-
----
-
-### Resilient pfSense Decoders
-
-A silent decoder failure was traced to variations in syslog headers, including cases where the hostname field was missing.
-
-The pipeline was redesigned to avoid depending on:
-
-```xml
-<program_name>
-```
-
-Instead, the decoder relies on:
-
-```xml
-<prematch>
-```
-
-and uses:
-
-```xml
-offset="after_parent"
-```
-
-to accurately extract ICMP, TCP, and UDP fields regardless of upstream log formatting.
-
----
-
-### Endpoint Whitelisting for LSASS Monitoring
-
-Sysmon Event ID 10 (`ProcessAccess`) was tuned using regex-based whitelisting.
-
-Legitimate processes such as:
+does not automatically mean the traffic crosses:
 
 ```text
-taskmgr.exe
-MsMpEng.exe
+pfSense 192.168.60.254
 ```
 
-were excluded where appropriate so that alerts focus on suspicious LSASS access patterns associated with credential-dumping activity.
+Therefore, pfSense alerts must be interpreted according to the actual network path.
 
 ---
 
-### Overcoming Wazuh API Crashes
+# 🛰️ 2. Suricata
 
-A recurring HTTP 500 error was observed on the Wazuh Dashboard's **Manage Rules** interface.
+Suricata is used as a network detection layer.
 
-The root cause was traced to trailing commas in XML `<group>` tags, which caused the API's Python parser to fail.
+The Windows deployment provides visibility into:
 
-The issue was resolved by enforcing strict XML syntax hygiene in the custom rules.
+> **East-west traffic involving the monitored Windows endpoint.**
 
----
+The current custom rules include detections for:
 
-## Repository Structure
+| SID | Detection |
+|---|---|
+| `1000002` | Possible port scan |
+| `1000003` | Repeated SSH connection attempts |
+| `1000004` | RDP connection attempt |
+| `1000005` | SMB port probe |
+| `1000006` | Suspicious reverse-shell / C2 ports |
+| `1000007` | Suspicious curl User-Agent |
+| `1000008` | EICAR test file over HTTP |
+| `1000009` | Suspicious DNS test domain |
+| `1000010` | Windows shell banner pattern |
+| `1000011` | Curl download of script/executable |
+
+Suricata writes EVE JSON events to:
 
 ```text
-wazuh-soc-home-lab/
+C:\Program Files\Suricata\log\eve.json
+```
+
+The Wazuh Agent consumes this telemetry.
+
+---
+
+# 🖥️ 3. Windows / Sysmon
+
+Sysmon provides endpoint telemetry including:
+
+- Process creation
+- Process command lines
+- Network connections
+- File creation
+- Registry modifications
+- LSASS access
+
+Important Event IDs used by this project include:
+
+```text
+Event ID 1   → Process Creation
+Event ID 3   → Network Connection
+Event ID 10  → Process Access
+Event ID 11  → File Creation
+Event ID 13  → Registry Value Modification
+```
+
+Windows Security logs are also collected for events such as:
+
+```text
+4624 → Successful logon
+4625 → Failed logon
+4740 → Account lockout
+1102 → Security log cleared
+```
+
+---
+
+# 🗂️ 4. File Integrity Monitoring
+
+Wazuh FIM monitors selected Windows directories including:
+
+```text
+C:\Users\LENOVO\Downloads\virustotaltest
+C:\Users\LENOVO\tmp
+```
+
+This provides visibility into:
+
+- File creation
+- File modification
+- File deletion
+- Hash changes
+
+FIM is especially useful when combined with Suricata and VirusTotal during payload-delivery scenarios.
+
+---
+
+# 🦠 5. VirusTotal Integration
+
+When FIM identifies a relevant file, the Wazuh manager can use its hash for VirusTotal enrichment.
+
+The resulting telemetry can provide:
+
+```text
+MD5
+SHA1
+SHA256
+Malicious / suspicious reputation
+Detection count
+```
+
+This creates a multi-layer detection chain:
+
+```text
+Network Transfer
+      │
+      ▼
+Suricata
+      │
+      ├───────────────┐
+      ▼               ▼
+     FIM          File Hash
+      │               │
+      │               ▼
+      │         VirusTotal
+      │               │
+      └───────┬───────┘
+              ▼
+         Wazuh Alert
+```
+
+---
+
+# ⚙️ Detection Engineering
+
+The project uses custom Wazuh decoders and rules for multiple telemetry sources.
+
+## Custom Decoder
+
+```text
+siem-wazuh/custom-decoder/local_decoder.xml
+```
+
+The pfSense decoder parses the `filterlog` format and extracts network fields into structured Wazuh fields.
+
+---
+
+## Custom Wazuh Rules
+
+### pfSense
+
+```text
+siem-wazuh/custom-rules/pfsense_rules.xml
+```
+
+Examples:
+
+```text
+100100 → Base pfSense event
+100102 → Multiple firewall blocks
+100130 → Possible port scan
+100140 → TCP connection burst
+100201 → Ping sweep
+```
+
+### Suricata
+
+```text
+siem-wazuh/custom-rules/suricata_rules.xml
+```
+
+Examples:
+
+```text
+100300 → Possible port scan
+100301 → Repeated SSH attempts
+100304 → Possible reverse shell / C2
+100306 → EICAR file download
+100307 → Suspicious DNS test domain
+```
+
+### Sysmon / Windows
+
+```text
+siem-wazuh/custom-rules/sysmon_rules.xml
+```
+
+Examples:
+
+```text
+100401 → Encoded PowerShell
+100402 → Discovery binaries
+100404 → Suspicious PowerShell / CMD network connection
+100406 → Registry Run key persistence
+100408 → Failed login burst
+100410 → Successful login after failed-login burst
+100411 → Suspicious LSASS access
+100412 → Security log cleared
+100413 → Suspicious outbound connection on port 4445
+100414 → Suspicious LOLBin traffic on web ports
+```
+
+---
+
+# 🧪 Threat Emulation
+
+The project contains an attack chain mapped to MITRE ATT&CK.
+
+The current chain includes:
+
+```text
+Reconnaissance
+      ↓
+Brute Force
+      ↓
+Initial Access
+      ↓
+Execution
+      ↓
+Discovery
+      ↓
+Payload Delivery
+      ↓
+Persistence
+      ↓
+Command & Control
+      ↓
+Credential Access
+      ↓
+File Lifecycle
+      ↓
+Anti-Forensics
+      ↓
+Exfiltration
+```
+
+---
+
+# 🎯 Current Attack Chain Validation
+
+The current validation results should be interpreted carefully.
+
+| Stage | Technique | Current Evidence |
+|---|---|---|
+| 1 | Reconnaissance | ⚠️ Re-test required; endpoint Suricata is the expected sensor |
+| 2 | Brute Force | ✅ Suricata + Windows failed-logon telemetry |
+| 3 | Successful Access | ⚠️ Successful `4624` not yet conclusively demonstrated |
+| 4 | Encoded PowerShell | ✅ Custom detection observed |
+| 5 | Discovery | ⚠️ Built-in Wazuh rule observed; custom rule needs verification |
+| 6 | Payload Delivery | ✅ Suricata + FIM + VirusTotal evidence |
+| 7 | Persistence | ⚠️ Built-in Sysmon rule observed; custom rule needs verification |
+| 8 | Command & Control | ✅ Network detection observed; current rule revision requires re-test |
+| 8b | LSASS Access | ⚠️ Needs raw Sysmon Event ID 10 evidence |
+| 9 | File Lifecycle | ⚠️ Screenshot evidence exists; raw JSON should be preserved |
+| 10 | Anti-Forensics | ✅ Windows Event 1102 observed |
+| 11 | Exfiltration | ⚠️ Detection and raw evidence still need validation |
+
+The project intentionally documents detection gaps rather than treating every planned rule as already verified.
+
+---
+
+# 🧭 Stage 1 — Reconnaissance
+
+The current Stage 1 test is:
+
+```bash
+nmap -sS -T4 -p- 192.168.60.1
+ping -c 5 192.168.60.1
+```
+
+### Current network path
+
+```text
+Kali
+192.168.60.135
+      │
+      │ TCP SYN
+      │
+      ▼
+Windows Victim
+192.168.60.1
+```
+
+The expected network sensor for this traffic is the **Suricata instance running on the Windows endpoint**.
+
+The corresponding Suricata SID is:
+
+```text
+1000002
+```
+
+and the Wazuh wrapper rule is:
+
+```text
+100300
+```
+
+### Why pfSense may not alert on this scan
+
+The current attacker and victim are on the same LAN subnet:
+
+```text
+192.168.60.0/24
+```
+
+Therefore, the traffic does not automatically cross the pfSense gateway.
+
+A pfSense alert observed during the same test window must therefore be checked carefully before being attributed to the Nmap scan.
+
+For example, loopback traffic such as:
+
+```text
+127.0.0.1 → 127.0.0.1:53
+```
+
+is not evidence that pfSense detected the Kali scan.
+
+---
+
+# 📊 Detection Philosophy
+
+The project emphasizes **behavior-based detection** instead of relying exclusively on static indicators.
+
+For example, a reverse shell should not be detected only because it uses:
+
+```text
+4444
+```
+
+The project therefore combines:
+
+```text
+Network indicators
++
+Process telemetry
++
+Connection behavior
++
+File activity
++
+Registry activity
++
+Authentication events
+```
+
+This allows the same behavior to be investigated from multiple independent telemetry sources.
+
+---
+
+# 🛡️ Defense-in-Depth Examples
+
+## Example 1 — Brute Force
+
+```text
+Kali / Hydra
+      │
+      ▼
+Suricata
+      │
+      └── Repeated SSH connection attempts
+                  │
+                  ▼
+            Windows Security
+                  │
+                  └── Event 4625
+                         │
+                         ▼
+                   Wazuh
+```
+
+## Example 2 — Payload Delivery
+
+```text
+Kali HTTP Server
+      │
+      ▼
+Windows victim
+      │
+      ├── Suricata
+      │      └── EICAR download
+      │
+      ├── FIM
+      │      └── New file detected
+      │
+      └── VirusTotal
+             └── Hash reputation
+                    │
+                    ▼
+                 Wazuh
+```
+
+## Example 3 — Persistence
+
+```text
+reg.exe
+   │
+   ▼
+Registry Run Key modified
+   │
+   ├── Sysmon Event 13
+   │
+   └── Wazuh detection
+```
+
+---
+
+# 📁 Repository Structure
+
+```text
+Wazuh-siem-home-lab/
+│
 ├── README.md
 │
 ├── architecture/
-│   ├── architecture-and-data-flow.png
-│   
+│   └── Architecture-and-data-flow.png
 │
 ├── docs/
 │   ├── 01-infrastructure-setup.md
 │   ├── 02-log-ingestion-pipeline.md
-│   ├── 03-detection-engineering.md
+│   ├── 03-Detection-engineering.md
 │   └── 04-threat-emulation-report.md
 │
 ├── endpoints/
+│   ├── manager/
+│   │   └── m_ossec.conf
+│   │
 │   └── windows-11/
-│   │   ├── sysmon-config.xml
-│   │   └── ossec.conf
-│   |
-|   |___ manager/
-|        ├──m_ossec.conf
-|
-|
-|
-|
+│       ├── ossec.conf
+│       └── sysmon_config.xml
+│
 ├── network/
 │   ├── pfsense_config/
-│   │   └── config-backup.xml
+│   │   └── config_backup.xml
 │   │
-│   └── suricata_configuration/
-│       ├── suricata.yaml
-│       └── local.rules
+│   └── Suricata_configuration/
+│       ├── local.rules
+│       └── suricata.yaml
 │
-|
-|
-|
-|
 ├── siem-wazuh/
-│   ├── custom_dcecoders/
+│   ├── custom-decoder/
 │   │   └── local_decoder.xml
 │   │
-│   ├── custom_rules/
-│       └── pfsense_rules.xml
-│       |__ suricata_rules.xml
-│       |__ sysmon_rules.xml
-│       
+│   └── custom-rules/
+│       ├── pfsense_rules.xml
+│       ├── suricata_rules.xml
+│       └── sysmon_rules.xml
 │
-├── threat-emulation/
-│   ├── attack-scripts/
-│   └── sample-logs/
-│
-└── screenshots/
+└── screenshot/
+    ├── Stage1_recon.png
+    ├── Stage2_bruteforce.png
+    ├── Stage3_access.png
+    ├── Stage5_discovery.png
+    ├── Stage6_payload1.png
+    ├── Stage6_payload2.png
+    ├── Stage6_payload3.png
+    ├── Stage7_persistence.png
+    ├── Stage8_C2.png
+    └── Stage9_fim.png
 ```
 
 ---
 
-## Lessons Learned & Troubleshooting
+# 📚 Documentation
 
-### Verification is Mandatory
+## Infrastructure
 
-A rule that "looks correct" in XML isn't considered verified until tested via:
+[`docs/01-infrastructure-setup.md`](docs/01-infrastructure-setup.md)
 
-```bash
-wazuh-logtest
-```
+Documents:
 
-against real or representative log samples.
+- VMware topology
+- Wazuh installation
+- Windows endpoint setup
+- pfSense setup
+- Suricata setup
+- Wazuh Agent integration
+- Network connectivity validation
 
-Several custom rules were found to be silently overridden by Wazuh's default ruleset until properly prioritized and validated.
+## Log Ingestion
+
+[`docs/02-log-ingestion-pipeline.md`](docs/02-log-ingestion-pipeline.md)
+
+Documents:
+
+- pfSense syslog ingestion
+- Custom pfSense decoder
+- Suricata EVE JSON ingestion
+- Windows Event Channel ingestion
+- Sysmon telemetry
+- FIM
+- VirusTotal integration
+
+## Detection Engineering
+
+[`docs/03-Detection-engineering.md`](docs/03-Detection-engineering.md)
+
+Documents:
+
+- Custom decoders
+- Custom Wazuh rules
+- Suricata rules
+- Sysmon rules
+- Correlation logic
+- False positives
+- Detection limitations
+- Tuning decisions
+
+## Threat Emulation Report
+
+[`docs/04-threat-emulation-report.md`](docs/04-threat-emulation-report.md)
+
+Documents:
+
+- Attack chain
+- MITRE ATT&CK mapping
+- Attack commands
+- Observed telemetry
+- Alert analysis
+- Detection gaps
+- Re-test requirements
+- Evidence status
 
 ---
 
-### API Sensitivity
+# 🔬 Verification Methodology
 
-The Wazuh Manager core (`wazuh-analysisd`) can be more forgiving of certain XML configuration issues than the Wazuh API.
+A detection is not considered fully validated simply because the XML rule looks correct.
 
-The Dashboard's **Manage Rules** functionality proved significantly more sensitive to malformed XML syntax, reinforcing the importance of strict configuration validation.
-
----
-
-### Behavior > Signatures
-
-Hardcoding port `4444` for reverse shells or port `4445` for exfiltration creates blind spots.
-
-Detection must focus on behavior rather than relying solely on fixed indicators.
-
-For example:
-
-- Standard web ports showing anomalous outbound activity
-- Suspicious process-to-network relationships
-- LOLBin network activity
-- Unexpected outbound connections
-- Abnormal data transfer behavior
-
-This approach provides more resilient detection logic against simple indicator changes.
-
----
-
-## Detection Workflow
-
-The lab follows a repeatable detection-engineering workflow:
+The project follows:
 
 ```text
-Security Event / Attack Simulation
-                │
-                ▼
-          Data Collection
-                │
-                ▼
-       Decoder / Parser Logic
-                │
-                ▼
-       Detection Rule Match
-                │
-                ▼
-            Wazuh Alert
-                │
-                ▼
-           Investigation
-                │
-                ▼
-      False Positive Analysis
-                │
-                ▼
-        Rule Tuning / Update
-                │
-                ▼
-          Re-Test Detection
-                │
-                ▼
-        Document Final Result
+1. Create detection logic
+        ↓
+2. Generate the behavior
+        ↓
+3. Collect telemetry
+        ↓
+4. Inspect raw event
+        ↓
+5. Run wazuh-logtest where appropriate
+        ↓
+6. Verify the final Wazuh rule ID
+        ↓
+7. Investigate false positives
+        ↓
+8. Tune the rule
+        ↓
+9. Re-test
+        ↓
+10. Preserve evidence
 ```
 
----
-
-## Project Goals
-
-This lab is designed to practice the following Blue Team capabilities:
-
-- Security monitoring
-- Log collection and analysis
-- Detection engineering
-- Custom Wazuh rule development
-- Custom Wazuh decoder development
-- Network IDS/IPS monitoring
-- Endpoint telemetry analysis
-- MITRE ATT&CK mapping
-- Alert triage
-- False-positive analysis
-- Detection tuning
-- Incident investigation
-- Threat emulation
+This is especially important for correlation rules where built-in Wazuh rules may match before a custom rule.
 
 ---
 
-## Future Improvements
+# ⚠️ Current Known Limitations
+
+## 1. External Attacker Scenario Not Yet Fully Tested
+
+The current attack chain was primarily tested with:
+
+```text
+Kali    192.168.60.135
+Windows 192.168.60.1
+```
+
+on the same LAN.
+
+The external attacker scenario:
+
+```text
+Kali
+  ↓
+pfSense
+  ↓
+Windows
+```
+
+still requires a dedicated validation run.
+
+## 2. Some Custom Rules Are Not Yet Proven
+
+Several stages are currently detected by built-in Wazuh/Sysmon rules rather than the intended custom rules.
+
+Examples include:
+
+```text
+100402
+100406
+100410
+100411
+100412
+100413
+```
+
+These require additional testing and raw alert evidence.
+
+## 3. Raw Evidence Coverage Is Incomplete
+
+Some historical stages rely on:
+
+- Screenshots
+- Condensed JSON excerpts
+- Earlier rule revisions
+
+The final version of the project should preserve raw JSON evidence whenever possible.
+
+## 4. Suricata Visibility Depends on Sensor Placement
+
+A network IDS cannot observe traffic that does not traverse the interface being monitored.
+
+Therefore:
+
+```text
+Same-LAN traffic
+```
+
+and:
+
+```text
+Traffic crossing pfSense
+```
+
+must be treated as different visibility scenarios.
+
+---
+
+# 🚧 Future Improvements
 
 Planned improvements include:
 
-- Expanding detection coverage
-- Improving alert correlation
-- Adding more endpoint telemetry sources
-- Increasing MITRE ATT&CK coverage
-- Automating detection testing
-- Improving incident-response documentation
-- Adding additional attack simulations
-- Building reusable detection test cases
+- Validate the external-attacker topology through pfSense
+- Complete raw evidence collection for every attack stage
+- Re-test correlation rules
+- Improve endpoint network detections
+- Tune Suricata EVE ingestion to reduce unnecessary telemetry
+- Expand MITRE ATT&CK coverage
+- Build a Wazuh SOC dashboard for the full attack chain
+- Preserve reusable threat-emulation scripts and raw evidence
+- Improve investigation and incident-response documentation
 
 ---
 
-## Author
+# 🎯 Project Goals
+
+This project is designed to demonstrate practical Blue Team skills in:
+
+- SOC monitoring
+- Detection engineering
+- Network IDS
+- Endpoint telemetry
+- SIEM configuration
+- Log parsing
+- Custom Wazuh rules
+- Custom Wazuh decoders
+- MITRE ATT&CK mapping
+- Threat emulation
+- Alert triage
+- Correlation
+- False-positive analysis
+- Detection tuning
+- Evidence-based validation
+
+---
+
+# 🧠 Key Lessons Learned
+
+### 1. Sensor placement matters
+
+A firewall can only detect traffic that reaches it.
+
+A host-based network sensor can provide visibility into east-west traffic that may bypass the perimeter firewall.
+
+### 2. A detection must be validated against real telemetry
+
+A rule that looks logically correct can still fail because of:
+
+- Decoder behavior
+- Rule precedence
+- Event structure
+- Missing fields
+- Telemetry configuration
+- Network path
+- Traffic direction
+
+### 3. Multiple telemetry sources provide stronger evidence
+
+A single event may be ambiguous.
+
+Combining:
+
+```text
+Suricata
++
+pfSense
++
+Sysmon
++
+Windows Security
++
+FIM
++
+VirusTotal
+```
+
+provides much stronger investigation context.
+
+### 4. Documentation must match the real network
+
+The attack path should be documented according to the traffic that actually exists, rather than assuming that every attacker-to-victim connection passes through the firewall.
+
+---
+
+# 📌 Current Project Status
+
+> **Status: Active / Iterative Detection Engineering Lab**
+
+The project has successfully demonstrated multi-source detection across:
+
+```text
+Network
+Endpoint
+Authentication
+File Integrity
+Threat Intelligence
+SIEM Correlation
+```
+
+The current attack-chain evidence is strongest for the **same-LAN east-west scenario**.
+
+The next major validation milestone is to test an attacker positioned outside the victim LAN and verify the complete:
+
+```text
+Kali
+  ↓
+pfSense
+  ↓
+Windows
+  ↓
+Suricata / Sysmon / Wazuh
+```
+
+path.
+
+---
+
+# 👤 Author
 
 **Võ Minh Khoa**
 
-2nd-Year Information Security Student at the University of Information Technology (UIT), Ho Chi Minh City.
+Information Security / Cybersecurity Student  
+University of Information Technology (UIT)
 
-Interested in:
+Focused on:
 
-- Blue Team Operations
-- Security Operations Center (SOC)
+- SOC / Blue Team
 - Detection Engineering
-- Security Monitoring
-- Self-hosted Security Infrastructure
-
----
-
-## License
-
-This project's documentation and configuration examples are released under the [MIT License](LICENSE).
-
-Attack simulation content is strictly intended for **educational purposes and authorized testing within an isolated laboratory environment**.
+- DFIR
+- Network Security
+- SIEM
+- Threat Emulation
