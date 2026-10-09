@@ -208,7 +208,7 @@
   <!-- ========================================================= -->
   <!-- 10. Successful login after failed-login burst            -->
   <!-- ========================================================= -->
-  <rule id="100410" level="13" frequency="1" timeframe="200">
+  <rule id="100410" level="13" frequency="2" timeframe="200">
     <if_sid>60106</if_sid>
     <if_matched_sid>100408</if_matched_sid>
 
