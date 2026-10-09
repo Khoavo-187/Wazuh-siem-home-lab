@@ -384,12 +384,16 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100413` | 12 | EID 3, destination port `4445` | none | T1041 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
-#### `100400` — PowerShell spawned a process (level 5)
-`if_group sysmon_event1` plus a PCRE2 match on `parentImage` (`(?i)powershell\.exe$`). The description shows parent, child, command line and user, which gives the process lineage in one line. It is the **parent** of `100401`. Scheduled tasks and management agents that wrap PowerShell also trigger it, so keep it at a low level.
+#### `100400` — PowerShell-spawned process (level 5)
+
+This rule applies to the `sysmon_event1` group, which represents Sysmon Process Creation events (Event ID 1). It matches `win.eventdata.parentImage` when the parent process path ends with `powershell.exe`. The rule detects a child process launched by PowerShell, rather than simply checking whether the command line contains the word `powershell`. Its description includes the parent image, child image, command line and user to provide process-lineage context in a single alert.
 
 #### `100401` — Encoded PowerShell command (level 10)
-Child of `100400`; the command line must match `(?i)(?:^|\s)-(?:enc|encodedcommand|e)(?:\s|$)`. Encoding hides the payload from simple string detection (T1027) while running PowerShell (T1059.001).
-Limits: (1) it only fires when the process was **started by PowerShell** (because of the `100400` parent), so `cmd.exe → powershell -enc …` or `explorer.exe → powershell -enc …` is missed; (2) PowerShell accepts abbreviations such as `-ec` and `-en`, which the regex does not cover. See §5, item 3 for an independent version.
+
+This independent rule also applies to the `sysmon_event1` group. It checks that `win.eventdata.image` ends with `powershell.exe` and that `win.eventdata.commandLine` matches the PCRE2 pattern `(?i)(?:^|\s)[-/](?:e|ec|en[a-z]*)\s+\S{20,}`. The pattern looks for common encoded-command switch forms, such as `-e`, `-ec` and `-EncodedCommand`, followed by a non-whitespace argument containing at least 20 characters.
+
+Encoded commands can conceal their contents from straightforward command-line inspection, making this behavior relevant to obfuscation (T1027) and PowerShell execution (T1059.001). This is a heuristic detection: it does not decode the payload, guarantee that every encoded command will be detected, or prove that a matching command is malicious. Because the rule checks the current image rather than the parent image, it can also detect an encoded PowerShell command launched by `cmd.exe` or another parent process.
+
 
 #### `100402` — Reconnaissance binary (level 6)
 EID 1 where `image` ends with `whoami`, `systeminfo`, `tasklist` or `nltest`. These are standard discovery tools (T1033 system owner, T1082 system information). Individually they are normal admin activity, hence the low level and the correlation in `100407`.
@@ -405,6 +409,7 @@ EID 11 with `targetFilename` containing `\Temp\` or `\AppData\Roaming\`. As expl
 
 #### `100406` — Registry Run key persistence (level 10)
 EID 13 with `targetObject` matching `(?i)\\CurrentVersion\\(?:Run|RunOnce)(?:\\|$)` (T1547.001). Covers both HKLM and HKCU. Other autostart locations (`Winlogon`, `Policies\Explorer\Run`, services) are logged by Sysmon but not matched by this rule.
+Using <if_sid> which is a child of group `<sysmon_event3>`, so it can detect the registry key more accurate
 
 #### `100407` — Multiple reconnaissance commands (level 12)
 Correlation on `100402`: ≥3 recon binaries from the same `win.eventdata.user` within 120s. A single `whoami` is routine; a burst of discovery commands is **active enumeration** (T1087). It depends on `100402` actually being the rule that fires for those events (see precedence note, §5 item 2).
@@ -416,7 +421,7 @@ Correlation on rule `60122` (failed logon, event 4625): ≥5 failures from the s
 Fires when a **4624** (`60106`) arrives from an `ipAddress` that previously triggered `100408`. This ordering — many failures followed by a success — is the classic pattern of a guessed password (T1110 → T1078). It has no explicit `frequency`/`timeframe`, so the correlation window falls back to Wazuh's default. Set it explicitly (§5, item 5).
 
 #### `100411` — LSASS memory access (level 14)
-EID 10 where `targetImage` ends with `lsass.exe` and `sourceImage` is **not** `taskmgr`, `svchost` or `MsMpEng` (negated field match, the allow-list). It targets credential dumping (T1003.001). **With the current `sysmon_config.xml` no EID 10 is logged, so this rule cannot fire.** Expect further allow-list entries (system processes, EDR, hypervisor tools) once the event is enabled.
+EID 10 where `targetImage` ends with `lsass.exe` and `sourceImage` is **not** `taskmgr`, `svchost` or `MsMpEng` (negated field match, the allow-list). It targets credential dumping (T1003.001). EID 10 is now enabled in the committed Sysmon configuration and filtered on lsass.exe.However, the current repository does not contain a full raw alert proving that the latest configuration generated and matched rule 100411.
 
 #### `100412` — Security log cleared (level 15)
 Parent `60117` plus `win.system.eventID = 1102` (audit log cleared). Clearing the log is anti-forensics (T1070.001), hence the highest level in the set. Confirm that `60117` is an ancestor of Security 1102 events in your Wazuh version; the built-in ruleset has its own rule for the same event.
