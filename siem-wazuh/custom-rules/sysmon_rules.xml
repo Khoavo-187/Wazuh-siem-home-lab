@@ -8,8 +8,8 @@
   <rule id="100401" level="10">
     <if_group>sysmon_event1</if_group>
     
-    <field name="win.eventdata.image" type="prec2">(?i)powershell\.exe$</field>
-    <field name="win.eventdata.commandLine" type="prec2">(?i)(?:^|\s)[-/](?:e|ec|en[a-z]*)\s+\S{20,}</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(?:^|\s)[-/](?:e|ec|en[a-z]*)\s+\S{20,}</field>
     
     <description>Sysmon: Encoded Powershell command from $(win.eventdata.user) - possible command obfuscation | parent:$(win.eventdata.parentImage) | CMD" $(win.eventdata.commandLine) </description>
     <mitre><id>T1027</id><id>T1059.001</id></mitre>
@@ -88,7 +88,7 @@
 
   <rule id="100415" level="12"> 
     <if_sid>100403</if_sid> 
-    <field name="win.eventdata.commandLine" type="prec2">(?i)[-/](?:urlcache|verifyctl|decode(?:hex)?|transfer|addfile|setnotifycmdline)\b</field>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)[-/](?:urlcache|verifyctl|decode(?:hex)?|transfer|addfile|setnotifycmdline)\b</field>
     
     <description>Sysmon: LOLBin with download/decode arguments - $(win.eventdata.image) | CMD: $(win.eventdata.commandLine) </description>
 
@@ -261,7 +261,7 @@
       (?i)^C:\\Windows\\System32\\(?:svchost|taskmgr|wininit|csrss|services|lsass|wbem\\WmPrvSE)\.exe$|^C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\[^\\]+\\MsMpEng\.exe$|^C:\\Program Files\\Windows Defender\\MsMpEng\.exe$
     </field>
      
-    <field name="win.eventdata.grantedAccess" type="prec2">(?i)^0x(?:1010|1410|1438|143a|1f0fff|1f1fff|1f3fff|1fffff)$</field>
+    <field name="win.eventdata.grantedAccess" type="pcre2">(?i)^0x(?:1010|1410|1438|143a|1f0fff|1f1fff|1f3fff|1fffff)$</field>
  
    <description>
       CRITICAL: Unauthorized process accessed LSASS memory -
@@ -280,7 +280,7 @@
   <rule id="100416" level="15">
      <if_sid>100411</if_sid>
      
-     <field name="win.eventdata.callTrace" type="prec2">(?i)(?:dbgcore|dgbhelp)\.dll|UNKNOWN</field>
+     <field name="win.eventdata.callTrace" type="pcre2">(?i)(?:dbgcore|dgbhelp)\.dll|UNKNOWN</field>
 
      <description>CRITICAL: LSASS access with memory-dump call trace (MiniWriteDump or Unbacked code): $(win.eventdata.SourceImage)</description>
      <mitre>
