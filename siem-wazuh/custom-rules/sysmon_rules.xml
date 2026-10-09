@@ -146,26 +146,15 @@
 
 
   <!-- ========================================================= -->
-  <!-- 7. Registry Run / RunOnce persistence - Event ID 13     -->
+  <!-- 7. Registry Run / RunOnce persistence     -->
   <!-- ========================================================= -->
-  <rule id="100406" level="10">
-    <if_group>sysmon_event_13</if_group>
-
-    <field name="win.eventdata.targetObject" type="pcre2">
-      (?i)\\CurrentVersion\\(?:Run|RunOnce)(?:\\|$)
-    </field>
-
-    <description>
-      Sysmon: Registry Run key modified -
-      possible persistence via $(win.eventdata.image)
-    </description>
-
-    <mitre>
-      <id>T1547.001</id>
-    </mitre>
-
-    <group>persistence,registry</group>
-  </rule>
+ <rule id="100406" level="10">
+  <if_sid>92302</if_sid>
+  <field name="win.eventdata.targetObject" type="pcre2">(?i)\\CurrentVersion\\(?:Run|RunOnce)(?:\\|$)</field>
+  <description>Sysmon: Registry Run key modified - possible persistence via $(win.eventdata.image)</description>
+  <mitre><id>T1547.001</id></mitre>
+  <group>persistence,registry</group>
+</rule>
 
 
   <!-- ========================================================= -->
@@ -258,7 +247,7 @@
 
     <!-- Loại trừ một số tiến trình hợp lệ thường gặp -->
     <field name="win.eventdata.sourceImage" type="pcre2" negate="yes">
-      (?i)^C:\\Windows\\System32\\(?:svchost|taskmgr|wininit|csrss|services|lsass|wbem\\WmPrvSE)\.exe$|^C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\[^\\]+\\MsMpEng\.exe$|^C:\\Program Files\\Windows Defender\\MsMpEng\.exe$
+      (?i)^C:\\Windows\\System32\\(?:svchost|taskmgr|wininit|csrss|services|lsass|wbem\\WmiPrvSE)\.exe$|^C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\[^\\]+\\MsMpEng\.exe$|^C:\\Program Files\\Windows Defender\\MsMpEng\.exe$
     </field>
      
     <field name="win.eventdata.grantedAccess" type="pcre2">(?i)^0x(?:1010|1410|1438|143a|1f0fff|1f1fff|1f3fff|1fffff)$</field>
@@ -277,24 +266,27 @@
   </rule>
 
 
-  <rule id="100416" level="15">
-     <if_sid>100411</if_sid>
-     
-     <field name="win.eventdata.callTrace" type="pcre2">(?i)(?:dbgcore|dgbhelp)\.dll|UNKNOWN</field>
+ 
+<rule id="100416" level="15">
+    <if_sid>100411</if_sid>
 
-     <description>CRITICAL: LSASS access with memory-dump call trace (MiniWriteDump or Unbacked code): $(win.eventdata.SourceImage)</description>
-     <mitre>
-       <id>T1003.001</id>
-     </mitre>
+    <field name="win.eventdata.callTrace" type="pcre2">(?i)(?:dbghelp|dbgcore)\.dll|\bUNKNOWN\b</field>
 
-     <group>credential_access,lsass_access</group>
-  </rule>
+    <description>CRITICAL: LSASS access with suspicious memory-dump call trace: $(win.eventdata.sourceImage)</description>
+
+    <mitre>
+        <id>T1003.001</id>
+    </mitre>
+
+    <group>credential_access,lsass_access</group>
+</rule>
+
 
   <!-- ========================================================= -->
   <!-- 12. Windows Security Event Log cleared - Event ID 1102  -->
   <!-- ========================================================= -->
   <rule id="100412" level="15">
-    <if_sid>60117</if_sid>
+    <if_sid>60002</if_sid>
 
     <field name="win.system.eventID">^1102$</field>
 
@@ -356,7 +348,7 @@
       $(win.eventdata.image) ->
       $(win.eventdata.destinationIp):$(win.eventdata.destinationPort)
     </description>
-
+            
     <mitre>
       <id>T1041</id>
       <id>T1105</id>
