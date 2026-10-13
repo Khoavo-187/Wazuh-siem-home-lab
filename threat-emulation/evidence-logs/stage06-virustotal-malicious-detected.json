@@ -1,0 +1,58 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.17",
+  "_id": "eEcOD6ABN44PlsGIX_0u",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "integration": "virustotal",
+      "virustotal": {
+        "sha1": "3395856ce81f2b7382dee72602f798b642f14140",
+        "malicious": "1",
+        "total": "66",
+        "found": "1",
+        "positives": "62",
+        "source": {
+          "sha1": "3395856ce81f2b7382dee72602f798b642f14140",
+          "file": "c:\\users\\lenovo\\downloads\\virustotaltest\\eicar-facebook.com",
+          "md5": "44d88612fea8a8f36de82e1278abb02f"
+        },
+        "permalink": "https://www.virustotal.com/gui/file/275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f/detection/f-275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f-1786953282",
+        "scan_date": "2026-08-17 07:54:42"
+      }
+    },
+    "rule": {
+      "firedtimes": 1,
+      "mail": true,
+      "level": 12,
+      "pci_dss": [
+        "10.6.1",
+        "11.4"
+      ],
+      "description": "VirusTotal: Alert - c:\\users\\lenovo\\downloads\\virustotaltest\\eicar-facebook.com - 62 engines detected this file",
+      "groups": [
+        "virustotal"
+      ],
+      "mitre": {
+        "technique": [
+          "Exploitation for Client Execution"
+        ],
+        "id": [
+          "T1203"
+        ],
+        "tactic": [
+          "Execution"
+        ]
+      },
+      "id": "87105"
+    },
+    "location": "virustotal",
+    "decoder": {
+      "name": "json"
+    },
+    "timestamp": "2026-08-17T09:29:53.966+0000"
+  }
+}

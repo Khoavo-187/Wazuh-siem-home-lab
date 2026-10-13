@@ -1,0 +1,63 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.17",
+  "_id": "b0fNDqABN44PlsGIluSj",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "src_ip": "192.168.60.1",
+      "src_port": "60694",
+      "dest_ip": "192.168.60.137",
+      "dest_port": "443",
+      "proto": "TCP",
+      "alert": {
+        "severity": "2",
+        "signature_id": "1000002",
+        "rev": "2",
+        "metadata": {
+          "mitre_tactic_id": [
+            "TA0043"
+          ],
+          "mitre_technique_id": [
+            "T1595"
+          ]
+        },
+        "signature": "LOCAL Possible Port Scan - Multiple SYN in short time",
+        "action": "allowed",
+        "category": "Attempted Information Leak"
+      },
+      "timestamp": "2026-08-17T15:19:04.134687+0700"
+    },
+    "rule": {
+      "firedtimes": 2,
+      "level": 5,
+      "description": "Suricata: Possible Port Scan from 192.168.60.1",
+      "groups": [
+        "suricata",
+        "suricata_local",
+        "recon",
+        "network_scan"
+      ],
+      "mitre": {
+        "technique": [
+          "Active Scanning"
+        ],
+        "id": [
+          "T1595"
+        ],
+        "tactic": [
+          "Reconnaissance"
+        ]
+      },
+      "id": "100300"
+    },
+    "location": "C:\\Program Files\\Suricata\\log\\eve.json",
+    "decoder": {
+      "name": "json"
+    },
+    "timestamp": "2026-08-17T08:19:04.641+0000"
+  }
+}

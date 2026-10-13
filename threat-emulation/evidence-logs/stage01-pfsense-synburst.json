@@ -1,0 +1,79 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.28",
+  "_id": "O47aRqAB52b8xqz71nQy",
+  "_version": 1,
+  "_score": null,
+  "_source": {
+    "predecoder": {
+      "hostname": "filterlog[29276]:",
+      "timestamp": "Aug 27 11:57:42"
+    },
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "name": "wazuh",
+      "id": "000"
+    },
+    "previous_output": "Aug 27 11:57:42 filterlog[29276]: 72,,,1000002565,lo0,match,pass,out,4,0x0,,64,50213,0,none,17,udp,78,127.0.0.1,127.0.0.1,63685,53,58\nAug 27 11:57:42 filterlog[29276]: 68,,,1000002561,lo0,match,pass,in,4,0x0,,64,10650,0,none,17,udp,78,127.0.0.1,127.0.0.1,6320,53,58\nAug 27 11:57:42 filterlog[29276]: 68,,,1000002561,lo0,match,pass,in,4,0x0,,64,47262,0,none,17,udp,78,127.0.0.1,127.0.0.1,3403,53,58\nAug 27 11:57:42 filterlog[29276]: 72,,,1000002565,lo0,match,pass,out,4,0x0,,64,47262,0,none,17,udp,78,127.0.0.1,127.0.0.1,3403,53,58\nAug 27 11:57:41 filterlog[29276]: 68,,,1000002561,lo0,match,pass,in,4,0x0,,64,46472,0,none,17,udp,68,127.0.0.1,127.0.0.1,5884,53,48\nAug 27 11:57:41 filterlog[29276]: 72,,,1000002565,lo0,match,pass,out,4,0x0,,64,4415,0,none,17,udp,78,127.0.0.1,127.0.0.1,10036,53,58\nAug 27 11:57:41 filterlog[29276]: 68,,,1000002561,lo0,match,pass,in,4,0x0,,64,4415,0,none,17,udp,78,127.0.0.1,127.0.0.1,10036,53,58\nAug 27 11:57:41 filterlog[29276]: 68,,,1000002561,lo0,match,pass,in,4,0x0,,64,52058,0,none,17,udp,68,127.0.0.1,127.0.0.1,31633,53,48\nAug 27 11:57:41 filterlog[29276]: 72,,,1000002565,lo0,match,pass,out,4,0x0,,64,41184,0,none,17,udp,68,127.0.0.1,127.0.0.1,35345,53,48\nAug 27 11:57:41 filterlog[29276]: 72,,,1000002565,lo0,match,pass,out,4,0x0,,64,52058,0,none,17,udp,68,127.0.0.1,127.0.0.1,31633,53,48\nAug 27 11:57:41 filterlog[29276]: 72,,,1000002565,lo0,match,pass,out,4,0x0,,64,46472,0,none,17,udp,68,127.0.0.1,127.0.0.1,5884,53,48",
+    "data": {
+      "protocol": "udp",
+      "srcip": "127.0.0.1",
+      "pfsense": {
+        "reason": "match",
+        "rulenum": "68",
+        "offset": "0",
+        "protocol_number": "17",
+        "data_length": "58",
+        "flags": "none",
+        "length": "78",
+        "interface": "lo0",
+        "ttl": "64",
+        "tracker": "1000002561",
+        "tos": "0x0",
+        "ipversion": "4",
+        "id": "50213",
+        "direction": "in"
+      },
+      "dstport": "53",
+      "action": "pass",
+      "srcport": "63685",
+      "dstip": "127.0.0.1"
+    },
+    "manager": {
+      "name": "wazuh"
+    },
+    "rule": {
+      "firedtimes": 28,
+      "mail": false,
+      "level": 6,
+      "description": "pfSense: Burst of SYN packets from 127.0.0.1 to 127.0.0.1:53 - nhieu ket noi lien tiep toi cung 1 dich",
+      "groups": [
+        "pfsense",
+        "connection_flood"
+      ],
+      "id": "100140",
+      "frequency": 15
+    },
+    "location": "192.168.60.254",
+    "decoder": {
+      "name": "pfsense-lab"
+    },
+    "id": "1787895134.1498287",
+    "full_log": "Aug 27 11:57:42 filterlog[29276]: 68,,,1000002561,lo0,match,pass,in,4,0x0,,64,50213,0,none,17,udp,78,127.0.0.1,127.0.0.1,63685,53,58",
+    "timestamp": "2026-08-28T05:32:14.075+0000"
+  },
+  "fields": {
+    "timestamp": [
+      "2026-08-28T05:32:14.075Z"
+    ]
+  },
+  "highlight": {
+    "rule.id": [
+      "@opensearch-dashboards-highlighted-field@100140@/opensearch-dashboards-highlighted-field@"
+    ]
+  },
+  "sort": [
+    1787895134075
+  ]
+}

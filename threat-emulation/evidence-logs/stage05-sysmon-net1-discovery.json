@@ -1,0 +1,56 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.28",
+  "_id": "fI4gR6AB52b8xqz7Oecu",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "win": {
+        "eventdata": {
+          "image": "C:\\Windows\\System32\\net1.exe",
+          "parentImage": "C:\\Windows\\System32\\net.exe",
+          "parentCommandLine": "net  localgroup administrators",
+          "commandLine": "C:\\Windows\\system32\\net1  localgroup administrators",
+          "currentDirectory": "C:\\Users\\LENOVO\\",
+          "integrityLevel": "High",
+          "user": "LAPTOP-VF92GC15\\LENOVO"
+        },
+        "system": {
+          "eventID": "1",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "LAPTOP-VF92GC15",
+          "providerName": "Microsoft-Windows-Sysmon"
+        }
+      }
+    },
+    "rule": {
+      "firedtimes": 6,
+      "level": 3,
+      "description": "Discovery activity executed",
+      "groups": [
+        "sysmon",
+        "sysmon_eid1_detections",
+        "windows"
+      ],
+      "mitre": {
+        "technique": [
+          "Account Discovery"
+        ],
+        "id": [
+          "T1087"
+        ],
+        "tactic": [
+          "Discovery"
+        ]
+      },
+      "id": "92031"
+    },
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "timestamp": "2026-08-28T06:48:05.566+0000"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "rule": {
+    "id": "100411",
+    "level": 14,
+    "description": "CRITICAL: Process accessed LSASS memory - possible credential dumping C:\\Windows\\System32\\procdump.exe -> lsass.exe"
+  },
+  "data": {
+    "win": {
+      "eventdata": {
+        "sourceImage": "C:\\Windows\\System32\\procdump.exe",
+        "targetImage": "C:\\Windows\\System32\\lsass.exe"
+      }
+    }
+  }
+}

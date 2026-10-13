@@ -1,0 +1,82 @@
+{
+  "agent": {
+    "ip": "192.168.60.1",
+    "name": "window11Host",
+    "id": "001"
+  },
+  "manager": {
+    "name": "wazuh"
+  },
+  "data": {
+    "win": {
+      "eventdata": {
+        "subjectLogonId": "0x0",
+        "targetLinkedLogonId": "0x0",
+        "impersonationLevel": "%%1833",
+        "ipAddress": "192.168.60.135",
+        "authenticationPackageName": "NTLM",
+        "workstationName": "KALI",
+        "lmPackageName": "NTLM V2",
+        "targetLogonId": "0x3c3dd13",
+        "logonProcessName": "NtLmSsp",
+        "logonGuid": "{00000000-0000-0000-0000-000000000000}",
+        "targetUserName": "LENOVO",
+        "keyLength": "128",
+        "elevatedToken": "%%1842",
+        "subjectUserSid": "S-1-0-0",
+        "processId": "0x0",
+        "ipPort": "55878",
+        "targetDomainName": "LAPTOP-VF92GC15",
+        "targetUserSid": "S-1-5-21-701014724-483482641-3546372724-1001",
+        "virtualAccount": "%%1843",
+        "logonType": "3"
+      },
+      "system": {
+        "eventID": "4624",
+        "channel": "Security",
+        "computer": "LAPTOP-VF92GC15",
+        "severityValue": "AUDIT_SUCCESS",
+        "providerName": "Microsoft-Windows-Security-Auditing",
+        "systemTime": "2026-10-10T17:38:10.0622744Z",
+        "eventRecordID": "5692364"
+      }
+    }
+  },
+  "rule": {
+    "level": 6,
+    "description": "Successful Remote Logon Detected - User:\\LENOVO - NTLM authentication, possible pass-the-hash attack - Possible RDP connection. Verify that KALI is allowed to perform RDP connections",
+    "groups": [
+      "win_evt_channel",
+      "windows",
+      "authentication_success"
+    ],
+    "firedtimes": 3,
+    "mitre": {
+      "technique": [
+        "Pass the Hash",
+        "Domain Accounts",
+        "Remote Desktop Protocol"
+      ],
+      "id": [
+        "T1550.002",
+        "T1078.002",
+        "T1021.001"
+      ],
+      "tactic": [
+        "Defense Evasion",
+        "Lateral Movement",
+        "Persistence",
+        "Privilege Escalation",
+        "Initial Access"
+      ]
+    },
+    "id": "92657"
+  },
+  "location": "EventChannel",
+  "decoder": {
+    "name": "windows_eventchannel"
+  },
+  "id": "1791653891.1700322",
+  "timestamp": "2026-10-10T17:38:11.167+0000",
+  "_index": "wazuh-alerts-4.x-2026.10.10"
+}

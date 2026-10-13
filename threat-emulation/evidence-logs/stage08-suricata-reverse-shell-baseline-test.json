@@ -1,0 +1,69 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.17",
+  "_id": "IkfJDqABN44PlsGIKN7-",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "src_ip": "192.168.60.1",
+      "src_port": "58488",
+      "dest_ip": "192.168.60.128",
+      "dest_port": "31337",
+      "proto": "TCP",
+      "alert": {
+        "severity": "1",
+        "signature_id": "1000006",
+        "rev": "2",
+        "metadata": {
+          "mitre_tactic_id": [
+            "TA0011"
+          ],
+          "mitre_technique_id": [
+            "T1071"
+          ]
+        },
+        "signature": "LOCAL Possible Reverse Shell - Suspicious Outbound Port",
+        "action": "allowed",
+        "category": "A Network Trojan was detected"
+      },
+      "flow": {
+        "pkts_toserver": "5",
+        "pkts_toclient": "4",
+        "bytes_toserver": "330",
+        "bytes_toclient": "240"
+      },
+      "timestamp": "2026-08-17T15:14:10.631711+0700"
+    },
+    "rule": {
+      "firedtimes": 5,
+      "mail": true,
+      "level": 12,
+      "description": "Suricata: Possible Reverse Shell / C2 Outbound from 192.168.60.1 to port 31337",
+      "groups": [
+        "suricata",
+        "suricata_local",
+        "command_and_control"
+      ],
+      "mitre": {
+        "technique": [
+          "Application Layer Protocol"
+        ],
+        "id": [
+          "T1071"
+        ],
+        "tactic": [
+          "Command and Control"
+        ]
+      },
+      "id": "100304"
+    },
+    "location": "C:\\Program Files\\Suricata\\log\\eve.json",
+    "decoder": {
+      "name": "json"
+    },
+    "timestamp": "2026-08-17T08:14:11.178+0000"
+  }
+}

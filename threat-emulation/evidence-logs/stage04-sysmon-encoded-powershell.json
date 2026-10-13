@@ -1,0 +1,60 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.28",
+  "_id": "I44UR6AB52b8xqz7Jtvc",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "win": {
+        "eventdata": {
+          "image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "parentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+          "commandLine": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\" -NoProfile -EncodedCommand dwBoAG8AYQBtAGkAOwAgAGgAbwBzAHQAbgBhAG0AZQA7ACAAaQBwAGMAbwBuAGYAaQBnACAALwBhAGwAbAA=",
+          "currentDirectory": "C:\\Users\\LENOVO\\",
+          "integrityLevel": "High",
+          "user": "LAPTOP-VF92GC15\\LENOVO",
+          "hashes": "MD5=E65ECCA3754249C00F50A035202F7591,SHA256=7600FFE12DA441FE89D035B13801E8E91D064BC544A27B19A5CF49F6AB8B18F5"
+        },
+        "system": {
+          "eventID": "1",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "LAPTOP-VF92GC15",
+          "providerName": "Microsoft-Windows-Sysmon"
+        }
+      }
+    },
+    "rule": {
+      "firedtimes": 3,
+      "level": 10,
+      "description": "Sysmon: Encoded PowerShell command detected from LAPTOP-VF92GC15\\LENOVO - possible obfuscation",
+      "groups": [
+        "sysmon_local",
+        "windows",
+        "obfuscation",
+        "suspicious_powershell"
+      ],
+      "mitre": {
+        "technique": [
+          "Obfuscated Files or Information",
+          "PowerShell"
+        ],
+        "id": [
+          "T1027",
+          "T1059.001"
+        ],
+        "tactic": [
+          "Defense Evasion",
+          "Execution"
+        ]
+      },
+      "id": "100401"
+    },
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "timestamp": "2026-08-28T06:34:56.289+0000"
+  }
+}

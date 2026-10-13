@@ -1,0 +1,14 @@
+{
+  "rule": {
+    "id": "100412",
+    "level": 15,
+    "description": "CRITICAL: Security Event Log was cleared - possible anti-forensics/cleanup WAZUH-AGENT-WIN11"
+  },
+  "data": {
+    "win": {
+      "system": {
+        "eventID": "1102"
+      }
+    }
+  }
+}

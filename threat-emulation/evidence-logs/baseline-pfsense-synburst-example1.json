@@ -1,0 +1,41 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.08",
+  "_id": "GTgB4Z8BHRA8k6ROveYP",
+  "_source": {
+    "predecoder": {
+      "hostname": "filterlog[63489]:",
+      "timestamp": "Aug 8 10:53:29"
+    },
+    "data": {
+      "protocol": "tcp",
+      "srcip": "192.168.60.101",
+      "pfsense": {
+        "reason": "match",
+        "rulenum": "80",
+        "interface": "em1",
+        "ttl": "128",
+        "direction": "in"
+      },
+      "dstport": "443",
+      "action": "pass",
+      "srcport": "61197",
+      "dstip": "162.159.197.3"
+    },
+    "rule": {
+      "firedtimes": 14905,
+      "level": 6,
+      "description": "pfSense: Burst of SYN packets from 192.168.60.101 to 162.159.197.3:443 - multiple consecutive connections to the same destination",
+      "groups": [
+        "pfsense",
+        "connection_flood"
+      ],
+      "id": "100140",
+      "frequency": 15
+    },
+    "location": "192.168.60.254",
+    "decoder": {
+      "name": "pfsense-lab"
+    },
+    "timestamp": "2026-08-08T10:53:29.675+0000"
+  }
+}

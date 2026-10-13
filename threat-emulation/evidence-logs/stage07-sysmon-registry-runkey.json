@@ -1,0 +1,56 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.08.28",
+  "_id": "yY9WR6AB52b8xqz7AC6b",
+  "_source": {
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "data": {
+      "win": {
+        "eventdata": {
+          "image": "C:\\Windows\\system32\\reg.exe",
+          "targetObject": "HKU\\S-1-5-21-701014724-483482641-3546372724-1001\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\UpdaterSvc",
+          "details": "C:\\Windows\\System32\\calc.exe",
+          "eventType": "SetValue",
+          "user": "LAPTOP-VF92GC15\\LENOVO",
+          "ruleName": "T1060,RunKey"
+        },
+        "system": {
+          "eventID": "13",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "computer": "LAPTOP-VF92GC15",
+          "providerName": "Microsoft-Windows-Sysmon"
+        }
+      }
+    },
+    "rule": {
+      "firedtimes": 1,
+      "level": 6,
+      "description": "Registry entry to be executed on next logon was modified using command line application reg.exe",
+      "groups": [
+        "sysmon",
+        "sysmon_eid13_detections",
+        "windows"
+      ],
+      "mitre": {
+        "technique": [
+          "Registry Run Keys / Startup Folder"
+        ],
+        "id": [
+          "T1547.001"
+        ],
+        "tactic": [
+          "Persistence",
+          "Privilege Escalation"
+        ]
+      },
+      "id": "92302"
+    },
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "timestamp": "2026-08-28T07:46:47.333+0000"
+  }
+}

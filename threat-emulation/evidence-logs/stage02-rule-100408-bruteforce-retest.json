@@ -1,0 +1,72 @@
+{
+  "agent": {
+    "ip": "192.168.60.1",
+    "name": "window11Host",
+    "id": "001"
+  },
+  "manager": {
+    "name": "wazuh"
+  },
+  "data": {
+    "win": {
+      "eventdata": {
+        "subjectLogonId": "0x0",
+        "ipAddress": "192.168.60.135",
+        "authenticationPackageName": "NTLM",
+        "workstationName": "KALI",
+        "subStatus": "0xc000006a",
+        "logonProcessName": "NtLmSsp",
+        "targetUserName": "lenovo",
+        "keyLength": "0",
+        "subjectUserSid": "S-1-0-0",
+        "processId": "0x0",
+        "ipPort": "49416",
+        "failureReason": "%%2313",
+        "targetDomainName": "WORKGROUP",
+        "targetUserSid": "S-1-0-0",
+        "logonType": "3",
+        "status": "0xc000006d"
+      },
+      "system": {
+        "eventID": "4625",
+        "channel": "Security",
+        "computer": "LAPTOP-VF92GC15",
+        "severityValue": "AUDIT_FAILURE",
+        "providerName": "Microsoft-Windows-Security-Auditing",
+        "systemTime": "2026-10-10T17:37:51.6795649Z",
+        "eventRecordID": "5692342"
+      }
+    }
+  },
+  "rule": {
+    "firedtimes": 3,
+    "level": 10,
+    "description": "Windows: Multiple failed logons from 192.168.60.135 - possible brute force",
+    "groups": [
+      "sysmon_local",
+      "windows",
+      "authentication_attack",
+      "brute_force"
+    ],
+    "mitre": {
+      "technique": [
+        "Brute Force"
+      ],
+      "id": [
+        "T1110"
+      ],
+      "tactic": [
+        "Credential Access"
+      ]
+    },
+    "id": "100408",
+    "frequency": 5
+  },
+  "location": "EventChannel",
+  "decoder": {
+    "name": "windows_eventchannel"
+  },
+  "id": "1791653872.1655017",
+  "timestamp": "2026-10-10T17:37:52.770+0000",
+  "_index": "wazuh-alerts-4.x-2026.10.10"
+}
