@@ -393,7 +393,7 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 |---|---|---|---|---|
 | `100400` | 5 | EID 1, `parentImage` ends with `powershell.exe` | none | none |
 | `100401` | 10 | EID 1, `image` ends with `powershell.exe`, command line matches an encoded-command switch (`-e`/`-ec`/`-en…`) followed by ≥20 non-space chars | none | T1027, T1059.001 |
-| `100402` | 6 | EID 1, image `whoami`, `systeminfo`, `tasklist` or `nltest` | none | T1033, T1082 |
+| `100402` | 6 | EID 1, image `whoami`, `systeminfo`, `tasklist`, `nltest`, `net` or `net1` | none | T1033, T1082, T1087 |
 | `100403` | 8 | EID 1, image `certutil` or `bitsadmin` | none | T1105 |
 | `100415` | 12 | Child of `100403`, command line matches a download/decode switch (`urlcache`, `verifyctl`, `decode[hex]`, `transfer`, `addfile`, `setnotifycmdline`) | none | T1105 |
 | `100404` | 7 | EID 3, image `powershell` or `cmd` | none | T1071 |
@@ -408,8 +408,10 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100413` | 12 | EID 3, destination port `4445` | none | T1041 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
-#### `100400` — PowerShell spawned a process (level 5)
-`if_group sysmon_event1` plus a PCRE2 match on `parentImage` (`(?i)powershell\.exe$`). The description shows parent, child, command line and user, which gives the process lineage in one line. It is the **parent** of `100401`. Scheduled tasks and management agents that wrap PowerShell also trigger it, so keep it at a low level.
+#### `100400` — Shell spawned child process (level 5)
+`if_group sysmon_event1` plus a PCRE2 match on `parentImage`. The description shows parent, child, command line and user, which gives the process lineage in one line. **No longer a parent of `100401`** (see below — that rule is now independent). Scheduled tasks and management agents that wrap a shell also trigger it, so keep it at a low level.
+
+Fixed, 2026-10-13: the `description` field was missing a closing `)` on `$(win.eventdata.user` (truncated the rendered alert text; cosmetic, rule logic was unaffected) — confirmed fixed via a raw re-test alert (`docs/04`, Stage 5). Renamed from "PowerShell spawned process" / group `powershell_child` to "Shell spawned child process" / group `shell_child`; **not yet confirmed** whether `parentImage` was widened beyond `(?i)powershell\.exe$` (e.g. to also include `cmd.exe`) or only the description/group text changed — needs the current rule XML to confirm.
 
 #### `100401` — Encoded PowerShell command (level 10)
 Fixed: originally a child of `100400` (only fired when the process was *started by PowerShell*, missing `cmd.exe → powershell -enc …` or `explorer.exe → powershell -enc …`) and only matched `-enc`/`-encodedcommand`/`-e`, missing abbreviations like `-ec`/`-en`. Now independent (`if_group sysmon_event1`, no parent dependency) with a wider switch pattern:
@@ -423,6 +425,8 @@ Fixed: originally a child of `100400` (only fired when the process was *started 
 
 #### `100402` — Reconnaissance binary (level 6)
 EID 1 where `image` ends with `whoami`, `systeminfo`, `tasklist` or `nltest`. These are standard discovery tools (T1033 system owner, T1082 system information). Individually they are normal admin activity, hence the low level and the correlation in `100407`.
+
+**Scope widened, 2026-10-13.** Originally missed `net.exe`/`net1.exe`/`arp.exe` (the account-discovery and network-neighbour commands actually run in the Stage 5 emulation) — this was a scope gap, not a precedence issue (unlike `100406`/`100410`/`100412` above). `net.exe`/`net1.exe` are now confirmed in the pattern via a raw-alert re-test (`docs/04`, Stage 5). **Not yet confirmed**: whether `arp.exe` was also added — in the same re-test it only triggered the generic `100400` ("Shell spawned child process"), not `100402`. Add `arp` to the pattern if parity with `net`/`net1` is wanted.
 
 #### `100403` — LOLBin download/decode (level 8)
 EID 1 for `certutil.exe` or `bitsadmin.exe`, both able to fetch or decode files (T1105). The rule does not inspect arguments, so legitimate certificate operations also match — kept deliberately low-fidelity as a base signal; `100415` below adds the high-fidelity child.
@@ -559,7 +563,7 @@ Ordered by impact. Items marked *hypothesis* need confirmation with `wazuh-logte
 | 10 | ✅ `100200` (level 7) alerted on every ICMP packet; `100140` could reach its threshold on normal HTTPS bursts | Noise | **Resolved**: `100200` is level 3 + `no_log`; `100140` restricted to admin-service ports |
 | 11 | `100413` hard-codes port 4445 | Blind spot if the port changes | Accepted trade-off: kept as a lab marker; `100404` / `100414` cover the behaviour |
 | 12 | `local.rules` sid `1000011` extension list (`.sh/.ps1/.exe/.bat/.dll`) doesn't include `.com` | Missed the EICAR file downloaded in the Stage 6 emulation (`eicar-facebook.com`) | Add `com`, `scr`, `vbs`, `js`, `msi` to the `pcre` extension list |
-| 13 | `sysmon_rules.xml`, rule `100400`: `description` is missing a closing `)` on `$(win.eventdata.user` | Field substitution likely doesn't resolve correctly in the alert text; cosmetic only (rule logic unaffected) | Close the parenthesis |
+| 13 | ✅ `sysmon_rules.xml`, rule `100400`: `description` was missing a closing `)` on `$(win.eventdata.user` | Field substitution didn't resolve correctly in the alert text; cosmetic only | **Resolved** — confirmed via a 2026-10-13 raw alert showing the full value |
 | 14 | `sysmon_rules.xml`, rule `100401`: stray `"` in `description` (`CMD\" $(...)`) | Cosmetic typo in the alert text | Fix to `CMD:` |
 | 15 | `suricata_rules.xml`, rule `100308`: description has "shell banner **send** outbound" and "**possble** reverse shell" | Cosmetic typos | Fix to "sent" / "possible" |
 
