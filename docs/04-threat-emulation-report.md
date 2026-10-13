@@ -27,8 +27,8 @@ A 12-step attack chain — **Reconnaissance → Exfiltration** — was emulated 
 
 | Outcome | Steps | Count |
 |---|---|---|
-| ✅ Detected by the designed custom rule, raw alert preserved | 2 (Brute Force), 4 (Execution), 6 (Payload Drop), 8 (C2) | 4 |
-| ⚠️ Detected, but by a built-in rule instead of the designed custom rule | 3 (Successful Access), 5 (Discovery), 7 (Persistence), 10 (Anti-Forensics) | 4 |
+| ✅ Detected by the designed custom rule, raw alert preserved | 2 (Brute Force), 4 (Execution), 5 (Discovery), 6 (Payload Drop), 8 (C2) | 5 |
+| ⚠️ Detected, but by a built-in rule instead of the designed custom rule | 3 (Successful Access), 7 (Persistence), 10 (Anti-Forensics) | 3 |
 | ✅ Detected, screenshot evidence only | 9 (File Lifecycle) | 1 |
 | ⚠️ Inconclusive, no clean evidence | 1 (Reconnaissance), 8b (LSASS access) | 2 |
 | ❌ No evidence yet | 11 (Exfiltration) | 1 |
@@ -36,11 +36,12 @@ A 12-step attack chain — **Reconnaissance → Exfiltration** — was emulated 
 **Key findings**
 
 1. **The chain is observable end to end across four independent layers**: network (Suricata), firewall (pfSense), host (Sysmon and Windows Security log) and file/reputation (FIM and VirusTotal).
-2. **Of the alerts tied to the emulated behaviour, only four came from custom rules** (`100301`, `100304`, `100306`, `100401`). In Stages 3, 5, 7 and 10 a **built-in Wazuh rule fired instead of the designed custom rule** (`92657`, `92031`, `92302`, `63103`). The behaviour was detected, but the custom rule was not proven. Three of these four cases now trace to the same confirmed mechanism — a built-in rule sharing the custom rule's parent/group wins the match (`docs/03`, §5, item 2).
-3. **A 2026-10-10 re-test closed the Stage 3 gap, over a different protocol.** The original run only produced an account lockout over SSH; a focused re-test of Stages 2–3 — this time brute-forcing **SMB** with Hydra, then confirming with `smbclient` — captured a genuine successful logon (`4624`) following a genuine failed-logon burst (`100408` fired correctly, with the correct source IP). Stage 3 moves from "evidence doesn't match the stage" to "detected, but by a built-in rule" (`92657`), joining the same precedence pattern as Stages 5, 7 and 10.
-4. **Two steps still need a re-run**: Stage 1 (the pfSense alert shown is unrelated loopback DNS traffic; a WAN-side re-test was attempted but produced no usable evidence — see Stage 1 analysis) and Stage 8b (no raw alert; the committed Sysmon configuration did not log the required event at the time, since fixed on paper but not re-tested).
-5. **Stage 11 (exfiltration) has no captured evidence** and is the highest-priority item to complete.
-6. **Log clearing did not blind the SOC**: the Security log was wiped on the endpoint, yet the alert had already been forwarded to Wazuh.
+2. **Of the alerts tied to the emulated behaviour, only three now come from the originally-expected custom rule** (`100301`, `100304`, `100306`; `100401` and, after the 2026-10-13 fix, `100402`/`100407` also count as custom-rule detections). In Stages 3, 7 and 10 a **built-in Wazuh rule still fires instead of the designed custom rule** (`92657`, `92302`, `63103`). The behaviour was detected, but the custom rule was not proven. All three now trace to the same confirmed mechanism — a built-in rule sharing the custom rule's parent/group wins the match (`docs/03`, §5, item 2).
+3. **A 2026-10-13 re-test closed the Stage 5 gap.** The original run only showed built-in `92031` firing for `net1.exe`; a rewrite of the Sysmon rules widened `100402`'s scope (now confirmed matching `net.exe`/`net1.exe`, in addition to the original `whoami`/`systeminfo`/`tasklist`/`nltest`) and fixed a description-truncation bug in `100400`. The re-test produced raw `100402` and `100407` alerts, moving Stage 5 from "built-in fired instead" to "detected by custom rule". Whether `arp.exe` is also covered, and whether built-in `92031` still fires alongside, are not yet confirmed.
+4. **A 2026-10-10 re-test closed the Stage 3 gap, over a different protocol.** The original run only produced an account lockout over SSH; a focused re-test of Stages 2–3 — this time brute-forcing **SMB** with Hydra, then confirming with `smbclient` — captured a genuine successful logon (`4624`) following a genuine failed-logon burst (`100408` fired correctly, with the correct source IP). Stage 3 moves from "evidence doesn't match the stage" to "detected, but by a built-in rule" (`92657`), joining the same precedence pattern as Stages 7 and 10.
+5. **Two steps still need a re-run**: Stage 1 (the pfSense alert shown is unrelated loopback DNS traffic; a WAN-side re-test was attempted but produced no usable evidence — see Stage 1 analysis) and Stage 8b (no raw alert; the committed Sysmon configuration did not log the required event at the time, since fixed on paper but not re-tested).
+6. **Stage 11 (exfiltration) has no captured evidence** and is the highest-priority item to complete.
+7. **Log clearing did not blind the SOC**: the Security log was wiped on the endpoint, yet the alert had already been forwarded to Wazuh.
 
 ---
 
@@ -332,14 +333,46 @@ tasklist
 | Command line | `net1 localgroup administrators` |
 | User / integrity | `LAPTOP-VF92GC15\LENOVO` / `High` |
 
-**Analysis**
+**Analysis — first attempt**
 
 - Discovery was detected, but by a **built-in rule**. The custom `100400` and `100402` were the expected triggers and were not observed.
-- **The custom rules do not target these commands.** `100402` matches only `whoami`, `systeminfo`, `tasklist` and `nltest`, so `net.exe`, `net1.exe`, `arp.exe` and `dir` are outside its scope. `100400` requires a PowerShell parent, but the commands ran from an SSH command shell.
-- `100407` (three discovery binaries by the same user within 120 seconds) should be satisfied by `whoami`, `systeminfo` and `tasklist` run in close succession, but no alert for it was captured.
+- **The custom rules did not target these commands at the time.** `100402` matched only `whoami`, `systeminfo`, `tasklist` and `nltest`, so `net.exe`, `net1.exe`, `arp.exe` and `dir` fell outside its scope. `100400` required a PowerShell parent specifically, but the commands ran from an SSH command shell.
+- `100407` (three discovery binaries by the same user within 120 seconds) should have been satisfied by `whoami`, `systeminfo` and `tasklist` run in close succession, but no alert for it was captured.
 - Known false positive: processes spawned from `ossec-agent\` under `SYSTEM` (the Wazuh SCA module) also trigger `T1087`. Checking `currentDirectory` and `user` separates it from attacker activity.
 
-**Verdict: ⚠️ Detected by built-in rule `92031`**; custom rules not proven.
+**2026-10-13 re-test — custom rules confirmed firing**
+
+```cmd
+:: executed via a PowerShell parent this time
+whoami
+tasklist
+systeminfo
+net
+net1
+arp -a
+```
+
+Following a rewrite of the Sysmon rules (scope widened, see `docs/03` §3.3), a re-test from a PowerShell parent produced three custom-rule alerts:
+
+| Rule | Level | Time (UTC) | What fired |
+|---|---|---|---|
+| `100402` | 6 | 05:04:30 | `whoami.exe` — "Reconnaissance binary executed" |
+| `100402` | 6 | 05:04:32 | `tasklist.exe` — "Reconnaissance binary executed" |
+| `100407` | 12 | 05:04:34 | Correlation: `whoami` → `tasklist` → `systeminfo` within 4.2s (`frequency=3` met) |
+| `100400` | 5 | 05:04:38 | `ARP.EXE` spawned by `powershell.exe` — "Shell spawned child process" |
+| `100402` | 6 | 05:04:42 | `net1.exe` — "Reconnaissance binary executed" |
+| `100402` | 6 | 05:04:42 | `net.exe` — "Reconnaissance binary executed" |
+
+See [`threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json`](../threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json) and [`stage05-rule-100400-shell-child-arp.json`](../threat-emulation/evidence-logs/stage05-rule-100400-shell-child-arp.json) for the raw alerts (`100402`'s own raw alert was not captured; the table above is read from Discover).
+
+**Analysis — re-test**
+
+- **`100402`'s scope was widened** to also match `net.exe` and `net1.exe` (confirmed by the raw Discover rows); whether `arp.exe` was added to the same regex is **not confirmed** — `ARP.EXE` only triggered the generic `100400` ("Shell spawned child process"), not a `100402` "Reconnaissance binary executed" alert. If parity with `net`/`net1`/`whoami` is intended, add `arp` to `100402`'s pattern.
+- **`100407`'s correlation logic is confirmed correct**: it fired once, exactly when the 3rd qualifying binary (`systeminfo`) landed within the 120-second window of the first (`whoami`). The later `net`/`net1` pair (2 matches) correctly did **not** trigger a second `100407`, since 2 is below the `frequency=3` threshold.
+- **`100400`'s known bug is fixed.** The earlier version truncated the description at `$(win.eventdata.user` (missing closing parenthesis, `docs/03` §5 item 13). The new alert renders the full value (`User: LAPTOP-VF92GC15\LENOVO`). The rule was also renamed/widened from "PowerShell spawned process" (group `powershell_child`) to "Shell spawned child process" (group `shell_child`) — **not confirmed** whether the `parentImage` condition itself was broadened beyond `powershell.exe` (e.g. to include `cmd.exe`), or only the description/group text changed.
+- **Whether built-in `92031` still fires alongside the custom rules is not confirmed** — it does not appear in the captured Discover rows for this window, but the rows shown may not be exhaustive.
+
+**Verdict: ✅ Detected by custom rules** (`100402`, `100407`) for the 2026-10-13 re-test, with `100400` also confirmed working correctly; `arp.exe`-specific coverage and the exact rule-logic changes still need the current rule XML to document precisely.
 
 ---
 
@@ -605,7 +638,7 @@ The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 o
 | 2 Brute Force | `100301`, `100408` | `100301`, `60122`, `100408` (re-test) | Suricata, Windows | ✅ | ✅ |
 | 3 Successful Access | `100410` | `92657` (built-in, re-test) | Windows | ❌ | ⚠️ |
 | 4 Execution | `100401` | `100401` | Sysmon | ✅ | ✅ |
-| 5 Discovery | `100400`, `100402`, `100407` | `92031` | Sysmon (built-in) | ❌ | ⚠️ |
+| 5 Discovery | `100400`, `100402`, `100407` | `100402`, `100407`, `100400` (re-test) | Sysmon | ✅ | ✅ |
 | 6 Payload Drop | `100306` | `100306`, FIM, `87105` | Suricata, FIM, VirusTotal | ✅ | ✅ |
 | 7 Persistence | `100406` | `92302` | Sysmon (built-in) | ❌ | ⚠️ |
 | 8 Command and Control | `100304` | `100304` (rev 2) | Suricata | ✅ | ✅ |
@@ -616,9 +649,9 @@ The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 o
 
 **Reading the results**
 
-- **Behaviour coverage is better than rule coverage.** Nine of twelve steps are now detected (eight with a raw alert, one by screenshot), but only five of them by the designed custom rule.
-- Every ⚠️ in Stages 3, 5, 7 and 10 follows the same pattern: a built-in rule matched first. This is the single most valuable thing to resolve, because it affects how the custom rules are written and ordered (see `docs/03`, section 5, item 2 — now confirmed for `100406`/`92302` and newly identified for `100410`/`92657`, with `100412`/`63103` still unconfirmed after a parent-reference fix).
-- Network detections (Suricata) were the most reliable: three of the five custom rules proven are Suricata rules.
+- **Behaviour coverage is better than rule coverage.** Nine of twelve steps are now detected (eight with a raw alert, one by screenshot), and now six of them by the designed custom rule — up from four, after the Stage 5 fix.
+- Every remaining ⚠️ (Stages 3, 7, 10) follows the same pattern: a built-in rule matched first. This is the single most valuable thing left to resolve, because it affects how the custom rules are written and ordered (see `docs/03`, section 5, item 2 — confirmed for `100406`/`92302` and `100410`/`92657`, with `100412`/`63103` still unconfirmed after a parent-reference fix). Stage 5 shows the fix is tractable: widening `100402`'s own matching scope (not a precedence fight) was enough to make the custom rule win outright.
+- Network detections (Suricata) were the most reliable: three of the six custom rules proven are Suricata rules.
 
 ---
 
@@ -631,7 +664,10 @@ The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 o
 | P1 | 1 | WAN-side re-test attempted, no clean evidence (suspect NAT hairpin, see Stage 1) | Repeat the WAN-side scan with `tcpdump` on both pfSense interfaces (WAN and LAN) simultaneously | Confirm whether the true source IP survives the NAT hop; raw `100300` or pfSense alert with a genuine external `srcip` |
 | P2 | 3, 5, 7, 10 | Built-in rule fires instead of the custom rule — confirmed mechanism (`docs/03`, §5, item 2), fixes applied for `100406` (and partially `100412`), not yet for `100410`; `100402`/`100407` never fire for this stage regardless (see P3 below) | Apply `if_sid` chaining to the winning built-in rule for `100410` (→ `92657`) and re-confirm `100412` (→ `60002`, possibly `63103`) with `wazuh-logtest` | Custom rule ID is the one reported alongside the built-in in `wazuh-logtest` and in a live re-test |
 | ~~P2~~ | ~~2, 3~~ | ~~SSH `4625` has no `ipAddress`~~ | **Partially resolved**: the 2026-10-10 re-test's `4625`/`4624` events do carry `ipAddress`, so `same_field ipAddress` correlation is viable for that access path. Still unconfirmed for a pure OpenSSH `logonType 8` login (the original Stage 2 evidence) — re-test that specific path before relying on `ipAddress` correlation for it | — |
-| P3 | 5 | `100402` does not cover `net`, `net1`, `arp` | Extend the binary list or add a separate low-level rule | Alert for `net localgroup administrators` |
+| ~~P3~~ | ~~5~~ | ~~`100402` does not cover `net`, `net1`, `arp`~~ | **Resolved for `net`/`net1`** (2026-10-13 re-test, confirmed raw alerts) | — |
+| P3 | 5 | `arp.exe` still not confirmed in `100402`'s pattern (only caught generically by `100400`) | Confirm the current regex; add `arp` if parity with `net`/`net1` is wanted | Raw `100402` alert for `arp.exe` |
+| P3 | 5 | Not confirmed whether `100400`'s `parentImage` condition was widened beyond `powershell.exe`, or only the description/group text changed | Share the current rule XML for a precise review | — |
+| P3 | 5 | Not confirmed whether built-in `92031` still fires alongside the custom rules for the same commands | Search Discover for `rule.id: 92031` in the same time window as the 2026-10-13 re-test | Confirm presence or absence |
 | P3 | 6 | `1000011` does not match `.com` | Add `com`, `scr`, `vbs`, `js`, `msi` to the extension list | Alert on the EICAR URL |
 | P3 | 8 | Evidence is from rule revision 2 | Re-run with the listener up so the handshake completes | `100304` fires on revision 3 |
 | P3 | 6, 9 | FIM and VirusTotal evidence are screenshots | Export raw alert JSON and note the rule IDs | Raw JSON stored in the repository |
@@ -738,7 +774,7 @@ excerpt, rule mismatch) is recorded in the index linked at the end of this appen
 | 2 Brute Force | `02-bruteforce_kali.sh` | `stage02-suricata-ssh-bruteforce.json`, `stage02-windows-4625-failed-logon.json`, `stage02-rule-100408-bruteforce-retest.json` |
 | 3 Successful Access | `03-successful-access_kali.sh` | `stage03-windows-4740-account-locked.json`, `stage03-rule-100410-correlation-excerpt.json`, `stage03-rule-92657-successful-logon.json` |
 | 4 Execution | `04-execution_windows.ps1` | `stage04-sysmon-encoded-powershell.json` |
-| 5 Discovery | `05-discovery_windows.cmd` | `stage05-sysmon-net1-discovery.json` |
+| 5 Discovery | `05-discovery_windows.cmd` | `stage05-sysmon-net1-discovery.json`, `stage05-rule-100400-shell-child-arp.json`, `stage05-rule-100407-recon-burst.json` |
 | 6 Payload Drop | `06-payload-drop_kali.sh`, `06-payload-drop_windows.cmd` | `stage06-suricata-eicar-download.json`, `stage06-virustotal-malicious-detected.json` |
 | 7 Persistence | `07-persistence_windows.cmd` | `stage07-sysmon-registry-runkey.json` |
 | 8 Command and Control | `08-command-control_kali.sh`, `08-command-control_windows.ps1` | `stage08-suricata-reverse-shell.json` |
