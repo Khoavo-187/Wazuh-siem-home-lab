@@ -1,0 +1,93 @@
+
+{
+  "_index": "wazuh-alerts-4.x-2026.10.13",
+  "_id": "gu4aNqEBLi-8zP-YJY-L",
+  "_score": null,
+  "_source": {
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "manager": {
+      "name": "wazuh"
+    },
+    "data": {
+      "win": {
+        "eventdata": {
+          "grantedAccess": "0x101000",
+          "targetProcessId": "1792",
+          "sourceUser": "NT AUTHORITY\\\\SYSTEM",
+          "targetImage": "C:\\\\Windows\\\\system32\\\\lsass.exe",
+          "sourceProcessGUID": "{bf739fa6-fef5-6ac9-8e00-000000001902}",
+          "callTrace": "C:\\\\Windows\\\\SYSTEM32\\\\ntdll.dll+162084|C:\\\\Windows\\\\SYSTEM32\\\\KERNELBASE.dll+23b56|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+fd96b|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+176acc|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+b03e48|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+c8949|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+c8811|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+9ae27|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+77e7da|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+77e8e0|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+f07ac|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+30b86|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+93ee6|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+93c69|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+93890|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+92f4b|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+7c16d9|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+f68ab|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+f63ec|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+7b3574|C:\\\\Windows\\\\SYSTEM32\\\\sechost.dll+4268|C:\\\\Windows\\\\SYSTEM32\\\\sechost.dll+2a0f|C:\\\\Windows\\\\SYSTEM32\\\\sechost.dll+22527|C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Definition Updates\\\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\\\mpengine.dll+7ae4c5",
+          "sourceThreadId": "17304",
+          "targetProcessGUID": "{bf739fa6-fef4-6ac9-0e00-000000001902}",
+          "utcTime": "2026-10-13 16:30:42.794",
+          "ruleName": "technique_id=T1003.001,technique_name=LSASS Memory",
+          "sourceProcessId": "6832",
+          "sourceImage": "C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Platform\\\\4.18.26080.4-0\\\\MsMpEng.exe",
+          "targetUser": "NT AUTHORITY\\\\SYSTEM"
+        },
+        "system": {
+          "eventID": "10",
+          "keywords": "0x8000000000000000",
+          "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+          "level": "4",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "opcode": "0",
+          "message": "\"Process accessed:\r\nRuleName: technique_id=T1003.001,technique_name=LSASS Memory\r\nUtcTime: 2026-10-13 16:30:42.794\r\nSourceProcessGUID: {bf739fa6-fef5-6ac9-8e00-000000001902}\r\nSourceProcessId: 6832\r\nSourceThreadId: 17304\r\nSourceImage: C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.26080.4-0\\MsMpEng.exe\r\nTargetProcessGUID: {bf739fa6-fef4-6ac9-0e00-000000001902}\r\nTargetProcessId: 1792\r\nTargetImage: C:\\Windows\\system32\\lsass.exe\r\nGrantedAccess: 0x101000\r\nCallTrace: C:\\Windows\\SYSTEM32\\ntdll.dll+162084|C:\\Windows\\SYSTEM32\\KERNELBASE.dll+23b56|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+fd96b|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+176acc|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+b03e48|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+c8949|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+c8811|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+9ae27|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+77e7da|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+77e8e0|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+f07ac|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+30b86|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+93ee6|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+93c69|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+93890|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+92f4b|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+7c16d9|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+f68ab|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+f63ec|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+7b3574|C:\\Windows\\SYSTEM32\\sechost.dll+4268|C:\\Windows\\SYSTEM32\\sechost.dll+2a0f|C:\\Windows\\SYSTEM32\\sechost.dll+22527|C:\\ProgramData\\Microsoft\\Windows Defender\\Definition Updates\\{BA8BD175-5C12-4C22-BBAD-CEA0542FED81}\\mpengine.dll+7ae4c5\r\nSourceUser: NT AUTHORITY\\SYSTEM\r\nTargetUser: NT AUTHORITY\\SYSTEM\"",
+          "version": "3",
+          "systemTime": "2026-10-13T16:30:42.7947031Z",
+          "eventRecordID": "2878368",
+          "threadID": "9080",
+          "computer": "LAPTOP-VF92GC15",
+          "task": "10",
+          "processID": "6524",
+          "severityValue": "INFORMATION",
+          "providerName": "Microsoft-Windows-Sysmon"
+        }
+      }
+    },
+    "rule": {
+      "firedtimes": 2,
+      "mail": true,
+      "level": 12,
+      "description": "Lsass process was accessed by C:\\\\ProgramData\\\\Microsoft\\\\Windows Defender\\\\Platform\\\\4.18.26080.4-0\\\\MsMpEng.exe with read permissions, possible credential dump",
+      "groups": [
+        "sysmon",
+        "sysmon_eid10_detections",
+        "windows"
+      ],
+      "mitre": {
+        "technique": [
+          "LSASS Memory"
+        ],
+        "id": [
+          "T1003.001"
+        ],
+        "tactic": [
+          "Credential Access"
+        ]
+      },
+      "id": "92900"
+    },
+    "location": "EventChannel",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "id": "1791909043.2854868",
+    "timestamp": "2026-10-13T16:30:43.467+0000"
+  },
+  "fields": {
+    "timestamp": [
+      "2026-10-13T16:30:43.467Z"
+    ]
+  },
+  "sort": [
+    1791909043467
+  ]
+}
