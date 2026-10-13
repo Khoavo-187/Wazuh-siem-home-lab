@@ -1,0 +1,90 @@
+{
+  "_index": "wazuh-alerts-4.x-2026.10.13",
+  "_id": "JO58NaEBLi-8zP-Yjk2J",
+  "_score": null,
+  "_source": {
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "manager": {
+      "name": "wazuh"
+    },
+    "data": {
+      "win": {
+        "eventdata": {
+          "image": "C:\\\\Windows\\\\system32\\\\reg.exe",
+          "targetObject": "HKU\\\\S-1-5-21-701014724-483482641-3546372724-1001\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\UpdaterSvc",
+          "processGuid": "{bf739fa6-3452-6ace-f429-000000001902}",
+          "processId": "49580",
+          "utcTime": "2026-10-13 13:38:26.085",
+          "ruleName": "T1060,RunKey",
+          "details": "C:\\\\Windows\\\\System32\\\\calc.exe",
+          "eventType": "SetValue",
+          "user": "LAPTOP-VF92GC15\\\\LENOVO"
+        },
+        "system": {
+          "eventID": "13",
+          "keywords": "0x8000000000000000",
+          "providerGuid": "{5770385f-c22a-43e0-bf4c-06f5698ffbd9}",
+          "level": "4",
+          "channel": "Microsoft-Windows-Sysmon/Operational",
+          "opcode": "0",
+          "message": "\"Registry value set:\r\nRuleName: T1060,RunKey\r\nEventType: SetValue\r\nUtcTime: 2026-10-13 13:38:26.085\r\nProcessGuid: {bf739fa6-3452-6ace-f429-000000001902}\r\nProcessId: 49580\r\nImage: C:\\Windows\\system32\\reg.exe\r\nTargetObject: HKU\\S-1-5-21-701014724-483482641-3546372724-1001\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\UpdaterSvc\r\nDetails: C:\\Windows\\System32\\calc.exe\r\nUser: LAPTOP-VF92GC15\\LENOVO\"",
+          "version": "2",
+          "systemTime": "2026-10-13T13:38:26.0868326Z",
+          "eventRecordID": "2875786",
+          "threadID": "9080",
+          "computer": "LAPTOP-VF92GC15",
+          "task": "13",
+          "processID": "6524",
+          "severityValue": "INFORMATION",
+          "providerName": "Microsoft-Windows-Sysmon"
+        }
+      }
+    },
+    "rule": {
+      "firedtimes": 1,
+      "mail": false,
+      "level": 10,
+      "description": "Sysmon: Registry Run key modified - possible persistence via C:\\\\Windows\\\\system32\\\\reg.exe",
+      "groups": [
+        "sysmon_local",
+        "windowspersistence",
+        "registry"
+      ],
+      "mitre": {
+        "technique": [
+          "Registry Run Keys / Startup Folder"
+        ],
+        "id": [
+          "T1547.001"
+        ],
+        "tactic": [
+          "Persistence",
+          "Privilege Escalation"
+        ]
+      },
+      "id": "100406"
+    },
+    "location": "EventChannel",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Sysmon\",\"providerGuid\":\"{5770385f-c22a-43e0-bf4c-06f5698ffbd9}\",\"eventID\":\"13\",\"version\":\"2\",\"level\":\"4\",\"task\":\"13\",\"opcode\":\"0\",\"keywords\":\"0x8000000000000000\",\"systemTime\":\"2026-10-13T13:38:26.0868326Z\",\"eventRecordID\":\"2875786\",\"processID\":\"6524\",\"threadID\":\"9080\",\"channel\":\"Microsoft-Windows-Sysmon/Operational\",\"computer\":\"LAPTOP-VF92GC15\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"Registry value set:\\r\\nRuleName: T1060,RunKey\\r\\nEventType: SetValue\\r\\nUtcTime: 2026-10-13 13:38:26.085\\r\\nProcessGuid: {bf739fa6-3452-6ace-f429-000000001902}\\r\\nProcessId: 49580\\r\\nImage: C:\\\\Windows\\\\system32\\\\reg.exe\\r\\nTargetObject: HKU\\\\S-1-5-21-701014724-483482641-3546372724-1001\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\\\\UpdaterSvc\\r\\nDetails: C:\\\\Windows\\\\System32\\\\calc.exe\\r\\nUser: LAPTOP-VF92GC15\\\\LENOVO\\\"\"},\"eventdata\":{\"ruleName\":\"T1060,RunKey\",\"eventType\":\"SetValue\",\"utcTime\":\"2026-10-13 13:38:26.085\",\"processGuid\":\"{bf739fa6-3452-6ace-f429-000000001902}\",\"processId\":\"49580\",\"image\":\"C:\\\\\\\\Windows\\\\\\\\system32\\\\\\\\reg.exe\",\"targetObject\":\"HKU\\\\\\\\S-1-5-21-701014724-483482641-3546372724-1001\\\\\\\\Software\\\\\\\\Microsoft\\\\\\\\Windows\\\\\\\\CurrentVersion\\\\\\\\Run\\\\\\\\UpdaterSvc\",\"details\":\"C:\\\\\\\\Windows\\\\\\\\System32\\\\\\\\calc.exe\",\"user\":\"LAPTOP-VF92GC15\\\\\\\\LENOVO\"}}}",
+
+    "timestamp": "2026-10-13T13:38:27.044+0000"
+  },
+  "fields": {
+    "timestamp": [
+      "2026-10-13T13:38:27.044Z"
+    ]
+  },
+  "sort": [
+    1791898707044
+  ]
+}
