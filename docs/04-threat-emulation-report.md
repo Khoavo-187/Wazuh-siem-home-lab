@@ -510,7 +510,10 @@ $client.Close()
 procdump.exe -accepteula -ma lsass.exe C:\Windows\Temp\lsass_test.dmp
 ```
 
-No screenshot was kept for this stage.
+False positive trigger for procdump with `window defenders` process
+
+![Figure 10 — Stage 8 evidence screenshot](../screenshot/stage8b_dump.png)
+
 
 **Evidence available:** a trimmed JSON excerpt showing `rule.id: 100411`, level 14, `sourceImage: C:\Windows\System32\procdump.exe` and `targetImage: ...\lsass.exe`. It lacks the standard alert fields (`_index`, `agent`, `decoder`, `timestamp`, `location`).
 
@@ -556,7 +559,9 @@ wevtutil cl Security
 Clear-EventLog -LogName Security
 ```
 
-No screenshot was kept for this stage.
+Image for anti forensic and cleanup detection
+![Figure 11 — Stage 9 evidence screenshot](../screenshot/stage10_cleanup.png)
+
 
 **Alert observed**
 
