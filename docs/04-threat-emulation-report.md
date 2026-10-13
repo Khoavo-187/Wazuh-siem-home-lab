@@ -178,6 +178,8 @@ hydra -L user.txt -P password.txt ssh://192.168.60.1
 ![Figure 3 — Stage 2 evidence screenshot](../screenshot/Stage2_bruteforce.png)
 
 *Figure 3 — Stage 2: brute-force evidence screenshot (as placed in the original writeup).*
+![Figure 3 — Stage 2 evidence screenshot](../screenshot/stage2_rule.png)
+*Stage 2: Activate the custom  rule for brute force theough `smbclient`.*
 
 **Alerts observed**
 
@@ -322,6 +324,8 @@ tasklist
 ![Figure 5 — Stage 5 evidence screenshot](../screenshot/Stage5_discovery.png)
 
 *Figure 5 — Stage 5 evidence screenshot (as placed in the original writeup).*
+![Stage 5 evidence screenshot](../screenshot/stage5_evidence.png)
+*Stage 5 evidence for custom rule, trigger by the command line.*
 
 **Alert observed**
 
@@ -351,7 +355,6 @@ net
 net1
 arp -a
 ```
-
 Following a rewrite of the Sysmon rules (scope widened, see `docs/03` §3.3), a re-test from a PowerShell parent produced three custom-rule alerts:
 
 | Rule | Level | Time (UTC) | What fired |
