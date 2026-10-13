@@ -13,7 +13,7 @@ breaks: true
 |---|---|
 | Author | Võ Minh Khoa |
 | Environment | Isolated VMware lab (Wazuh, Suricata, pfSense, Sysmon) |
-| Evidence window | 2026-08-28 → 2026-08-29 (alert timestamps, UTC) |
+| Evidence window | 2026-08-28 → 2026-08-29 (original chain run) + 2026-10-10 (standalone Stage 2–3 re-test), alert timestamps UTC |
 | Sources | Two lab writeups: baseline detection engineering report and the full attacking-chain playbook |
 | Related documents | [`01` setup](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/docs/01-infrastructure-setup.md) · [`02` ingestion](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/docs/02-log-ingestion-pipeline.md) · [`03` decoders & rules](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/docs/03-Detection-engineering.md) |
 
@@ -28,18 +28,19 @@ A 12-step attack chain — **Reconnaissance → Exfiltration** — was emulated 
 | Outcome | Steps | Count |
 |---|---|---|
 | ✅ Detected by the designed custom rule, raw alert preserved | 2 (Brute Force), 4 (Execution), 6 (Payload Drop), 8 (C2) | 4 |
-| ⚠️ Detected, but by a built-in rule instead of the designed custom rule | 5 (Discovery), 7 (Persistence), 10 (Anti-Forensics) | 3 |
+| ⚠️ Detected, but by a built-in rule instead of the designed custom rule | 3 (Successful Access), 5 (Discovery), 7 (Persistence), 10 (Anti-Forensics) | 4 |
 | ✅ Detected, screenshot evidence only | 9 (File Lifecycle) | 1 |
-| ⚠️ Inconclusive, or evidence does not match the stage | 1 (Reconnaissance), 3 (Successful Access), 8b (LSASS access) | 3 |
+| ⚠️ Inconclusive, no clean evidence | 1 (Reconnaissance), 8b (LSASS access) | 2 |
 | ❌ No evidence yet | 11 (Exfiltration) | 1 |
 
 **Key findings**
 
 1. **The chain is observable end to end across four independent layers**: network (Suricata), firewall (pfSense), host (Sysmon and Windows Security log) and file/reputation (FIM and VirusTotal).
-2. **Of the alerts tied to the emulated behaviour, only four came from custom rules** (`100301`, `100304`, `100306`, `100401`). In Stages 5, 7 and 10 a **built-in Wazuh rule fired instead of the designed custom rule** (`92031`, `92302`, `63103`). The behaviour was detected, but the custom rule was not proven.
-3. **Three steps need a re-run**: Stage 1 (the pfSense alert shown is unrelated loopback DNS traffic), Stage 3 (the evidence is an account lockout, not a successful logon) and Stage 8b (no raw alert; the committed Sysmon configuration did not log the required event at the time).
-4. **Stage 11 (exfiltration) has no captured evidence** and is the highest-priority item to complete.
-5. **Log clearing did not blind the SOC**: the Security log was wiped on the endpoint, yet the alert had already been forwarded to Wazuh.
+2. **Of the alerts tied to the emulated behaviour, only four came from custom rules** (`100301`, `100304`, `100306`, `100401`). In Stages 3, 5, 7 and 10 a **built-in Wazuh rule fired instead of the designed custom rule** (`92657`, `92031`, `92302`, `63103`). The behaviour was detected, but the custom rule was not proven. Three of these four cases now trace to the same confirmed mechanism — a built-in rule sharing the custom rule's parent/group wins the match (`docs/03`, §5, item 2).
+3. **A 2026-10-10 re-test closed the Stage 3 gap, over a different protocol.** The original run only produced an account lockout over SSH; a focused re-test of Stages 2–3 — this time brute-forcing **SMB** with Hydra, then confirming with `smbclient` — captured a genuine successful logon (`4624`) following a genuine failed-logon burst (`100408` fired correctly, with the correct source IP). Stage 3 moves from "evidence doesn't match the stage" to "detected, but by a built-in rule" (`92657`), joining the same precedence pattern as Stages 5, 7 and 10.
+4. **Two steps still need a re-run**: Stage 1 (the pfSense alert shown is unrelated loopback DNS traffic; a WAN-side re-test was attempted but produced no usable evidence — see Stage 1 analysis) and Stage 8b (no raw alert; the committed Sysmon configuration did not log the required event at the time, since fixed on paper but not re-tested).
+5. **Stage 11 (exfiltration) has no captured evidence** and is the highest-priority item to complete.
+6. **Log clearing did not blind the SOC**: the Security log was wiped on the endpoint, yet the alert had already been forwarded to Wazuh.
 
 ---
 
@@ -150,7 +151,19 @@ ping -c 5 192.168.60.1
 - **Clock offset on pfSense.** The syslog timestamp in the log line is `Aug 27 11:57:42`, while Wazuh received the event on 2026-08-28 at 05:32 UTC, a gap of about 17.5 hours. This points to a time-zone or NTP problem on pfSense and would break cross-source correlation.
 - **The false positive is already addressed.** The current version of `100140` only counts connections to administrative ports (`22, 23, 445, 3389, 5900, 1433, 3306`), so loopback DNS no longer matches.
 
-**Verdict: ⚠️ Inconclusive** — re-run and capture the Suricata `100300` alert (see §7).
+**Re-test attempt: triggering pfSense from the WAN side**
+
+The root cause above — a same-LAN scan not necessarily transiting pfSense's own rule evaluation — led to a second idea, attempted but not completed with clean evidence:
+
+1. Attack the pfSense **WAN** interface from outside the LAN (i.e. treat it like an internet-facing attacker, not a same-subnet neighbour): an Nmap scan or a Netcat-based port brute force directed at the WAN address.
+2. Watch pfSense's own firewall decision on that traffic — **block** or **pass** — in the `filterlog`.
+3. If passed, the connection is forwarded (via the WAN→LAN port-forward / NAT rule) through to the victim's LAN IP, so the same traffic should also show up endpoint-side (Suricata, Sysmon EID 3).
+
+This is architecturally the traffic pfSense's rule tree is actually built to reason about (`srcip` outside the LAN, a real `block`/`pass` decision at the boundary) — unlike the original Stage 1 attempt, where attacker and victim share the same `/24` and pfSense mostly only sees its own background traffic.
+
+**No usable evidence was captured.** The attempt produced events where the logged source IP did not look right — in a related Stage 2 re-test session (`192.168.60.1`, the *victim's own* LAN IP, appeared as the attacker source in one alert; see Stage 2 below) rather than a genuine external or WAN-side address. The likely cause is **NAT hairpinning**: when a host reaches the public/WAN IP through a path that pfSense ends up routing back through its own LAN interface, the original source address can be lost or rewritten, and Windows/Wazuh then report a local address instead of the real one. This has **not been confirmed** with a packet capture on both the WAN and LAN interfaces simultaneously, so treat it as a working hypothesis, not a finding.
+
+**Verdict: ⚠️ Inconclusive** — re-run and capture the Suricata `100300` alert (see §7). The WAN-side idea above is worth repeating with `tcpdump` on both pfSense interfaces at once, to see directly whether the source IP survives the NAT hop.
 
 ---
 
@@ -176,11 +189,34 @@ hydra -L user.txt -P password.txt ssh://192.168.60.1
 
 - **Two independent layers saw the same attack**: the network sensor counted repeated connection attempts to port 22, and the host recorded each failed logon. Either one alone would be weaker evidence.
 - `logonType 8` and `sshd.exe` confirm the failures came through OpenSSH for Windows, not an interactive logon.
-- **Correlation limitation.** The `4625` event does **not** contain an `ipAddress` field (OpenSSH does not populate it). Rules `100408` and `100410` correlate on `win.eventdata.ipAddress`, so for SSH they will probably never chain (to confirm with `wazuh-logtest`). Correlating on `win.eventdata.targetUserName` is the practical fix.
+- **Correlation limitation, in this specific run.** This `4625` event does **not** contain an `ipAddress` field. See the 2026-10-10 re-test below — a different run of the same kind of attack *did* populate `ipAddress`, so the gap is not universal; it needs confirming whether it depends on the OpenSSH authentication path (`logonType 8` here vs. `logonType 3` in the re-test).
 - Wazuh's built-in mapping for `60122` is T1531 (Account Access Removal). The brute-force meaning comes from `100301`, not from the built-in tag.
 - Hydra initially stopped with "all children disabled"; OpenSSH `MaxStartups` throttling was the cause and was resolved by raising it and lowering the thread count.
 
 **Verdict: ✅ Detected** (custom `100301` plus built-in `60122`).
+
+**2026-10-10 re-test — `100408` confirmed firing correctly**
+
+```bash
+# Kali — re-test, 2026-10-10: Hydra against SMB instead of SSH
+hydra -L user.txt -P password.txt smb://192.168.60.1
+```
+
+A later, standalone re-test of the brute-force → logon sequence (separate session, not part of the original 2026-08-28 chain) produced a raw alert from the custom correlation rule itself:
+
+| Field | Value |
+|---|---|
+| Rule | `100408` — "Windows: Multiple failed logons... possible brute force", level 10 (T1110) |
+| Time | 2026-10-10 17:37:52 (`firedtimes: 3`) |
+| Key fields | `targetUserName: lenovo`, `ipAddress: 192.168.60.135`, `logonType: 3`, `authenticationPackageName: NTLM`, `workstationName: KALI` |
+
+**Different protocol this time: SMB, not SSH.** The re-test used Hydra against the **SMB** service (`smb://`) rather than SSH — confirmed, not inferred. This fully explains the field differences from the original run: `logonType 3` (Network) and `authenticationPackageName: NTLM` are the standard signature of SMB/CIFS authentication (`NtLmSsp`), versus `logonType 8` for the original OpenSSH password exchange. `ipAddress` being populated here is consistent with SMB's logon path specifically — it does not resolve the earlier SSH `logonType 8` gap (Stage 2's first attempt), which is a separate, still-open question (see Gap Analysis). This is the first raw evidence that `100408` itself (not just the underlying `60122`) fires as designed, with the correct source IP. A separate Discover search for `100410` around this time found none — only built-in `60106`/`60118` entries (Figure 13, Appendix A), consistent with the precedence finding below.
+
+**Suricata coverage for SMB, not yet checked.** The custom Suricata rule for this service is `100303` (SMB Port Probe, sid `1000005`), not `100301` (SSH, which covers the original run). No Suricata evidence was captured for this specific re-test session — see the gap analysis.
+
+A separate, earlier attempt on 2026-10-09 also produced a `100408` alert (Figure 12, Appendix A), but with `ipAddress` showing `192.168.60.1` — the **victim's own LAN address** rather than Kali's — a clear artifact rather than a genuine attacker IP. This matches the WAN-side NAT-hairpin hypothesis noted in Stage 1: if that attempt was made against the WAN-facing address through a reflected/hairpinned path, the true source can get lost. Not confirmed; flagged here for the same reason as Stage 1.
+
+See [`threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json`](../threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json).
 
 ---
 
@@ -195,7 +231,7 @@ ssh lenovo@192.168.60.1
 
 *Figure 4 — Stage 3 evidence screenshot (as placed in the original writeup).*
 
-**Alert observed**
+**First attempt (2026-08-28) — alert observed**
 
 | Field | Value |
 |---|---|
@@ -204,15 +240,38 @@ ssh lenovo@192.168.60.1
 | Time | 05:46:41 (event time) — the same second as a failed logon of Stage 2 |
 | Mapping | T1110, T1531 |
 
-The correlation rule `100410` is shown only as a trimmed JSON excerpt (`rule.id`, `level`, `description`, `srcip`), from an older version whose logic pointed at the failed-logon rule instead of a successful logon.
-
-**Analysis**
+**Analysis — first attempt**
 
 - **The evidence does not prove a successful login.** Event `4740` shows that the brute force locked the account, which is an impact of Stage 2. The goal of this stage, valid-account use, was not demonstrated.
 - A locked account would also have blocked the cracked credentials, so the lockout likely prevented this stage from succeeding at that moment.
-- The current `100410` requires a `4624` logon after `100408` from the same `ipAddress`. Because SSH logons carry no `ipAddress` (see Stage 2), the chain would need a different correlation key.
 
-**Verdict: ⚠️ Evidence does not match the stage** — re-run with an unlocked account and capture a real `4624` plus the `100410` alert.
+**2026-10-10 re-test — successful logon captured**
+
+```bash
+# Kali — connect with the credentials Hydra recovered
+smbclient //192.168.60.1 -U 'Lenovo'
+```
+
+Following the account unlock and the Stage 2 re-test above (Hydra against SMB, then `smbclient` to confirm the cracked credentials), a genuine successful logon appeared:
+
+| Field | Value |
+|---|---|
+| Rule | `92657` — built-in "Successful Remote Logon Detected", level 6 |
+| Event | Windows `4624` for account `LENOVO` |
+| Time | 2026-10-10 17:38:11 (18 seconds after the `100408` alert in Stage 2) |
+| Key fields | `targetUserName: LENOVO`, `ipAddress: 192.168.60.135`, `logonType: 3`, `authenticationPackageName: NTLM`, `workstationName: KALI` |
+| Rule's own mapping | T1550.002 (Pass the Hash), T1078.002 (Domain Accounts), T1021.001 (Remote Desktop Protocol) — **the T1021.001/RDP tag is the same built-in boilerplate issue noted below; the real technique here is T1021.002 (SMB/Windows Admin Shares)** |
+
+See [`threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json`](../threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json). Figure 14 (Appendix A) is the Discover screenshot for this session, also showing `67028` ("Special privileges assigned to new logon", level 3) immediately after, and the `60122` failed-logon burst immediately before — the same sequence as the raw alerts.
+
+**Analysis — re-test**
+
+- **The goal of this stage is now demonstrated**: a real `4624` following a real failed-logon burst, 18 seconds apart, same `targetUserName` and `ipAddress` as Stage 2's `100408`.
+- **Built-in rule, not the custom one — same pattern as Stages 5, 7 and 10.** The custom `100410` (`if_sid 60106`, `if_matched_sid 100408`) did not appear; `92657` did. `92657` is very likely another child of `60106` (the base "logon success" rule), making this the same sibling-precedence issue already confirmed for `100406`/`92302`. See `docs/03`, §3.3 (`100410`) and §5, item 2, for the fix (`if_sid 92657` instead of `60106`) — not yet applied.
+- **Confirmed: this is SMB, not SSH and not RDP.** `92657`'s built-in description guesses "Possible RDP connection" — that wording is generic boilerplate Wazuh attaches to any NTLM `logonType 3` network logon, and it is misleading here: the access was `smbclient`, not RDP. The `logonType 3`/NTLM/`NtLmSsp` fields are the standard SMB signature, matching Stage 2's re-test above. This stage's *first* attempt (SSH, `logonType 8`) and this re-test (SMB, `logonType 3`) are two different access methods proving the same underlying idea — a successful logon following a credential-stuffing burst — over two different services.
+- Because `ipAddress` was populated correctly here, the earlier concern (Stage 2) that SSH logons might never populate it, and so `100408`/`100410`'s `same_field ipAddress` correlation could never match, does not apply to this run — the correlation condition itself is satisfiable; only the sibling-rule precedence stopped `100410` from being the one reported.
+
+**Verdict: ⚠️ Detected, but by a built-in rule (`92657`)** — joins Stages 5, 7 and 10 in the same precedence pattern; custom `100410` not yet proven.
 
 ---
 
@@ -517,7 +576,7 @@ Detection on port `4445` is signature-based and specific to this lab. A real SOC
 
 ## 5. Attack Timeline (UTC)
 
-The chain was run in two sessions: Stages 1–7 on 2026-08-28 and Stages 8–10 on 2026-08-29. Times are taken from the preserved alerts (event time).
+The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 on 2026-08-29, and a standalone Stages 2–3 re-test on 2026-10-10. A preliminary, inconclusive attempt was also made 2026-10-09. Times are taken from the preserved alerts (event time, UTC).
 
 | Stage | Date and time | Event | Source |
 |---|---|---|---|
@@ -532,6 +591,9 @@ The chain was run in two sessions: Stages 1–7 on 2026-08-28 and Stages 8–10 
 | 8 | 2026-08-29 07:45:49 | Outbound connection to Kali on port 4444 | Suricata `100304` |
 | 8b, 9, 11 | — | No timestamp preserved in the writeups | — |
 | 10 | 2026-08-29 08:39:25 | Security log cleared (Event `1102`) | Windows `63103` (built-in) |
+| 2 (preliminary) | 2026-10-09 ~08:05 | Failed-logon burst, but `ipAddress` shows the victim's own IP (artifact) | Windows `100408` |
+| 2 (re-test) | 2026-10-10 17:37:52 | Failed-logon burst, correct `ipAddress` | Windows `100408` |
+| 3 (re-test) | 2026-10-10 17:38:11 | Successful logon, 18s after the burst above | Windows `92657` (built-in) |
 
 ---
 
@@ -540,8 +602,8 @@ The chain was run in two sessions: Stages 1–7 on 2026-08-28 and Stages 8–10 
 | Stage | Custom rule expected | Rule that fired | Layer | Custom rule proven | Verdict |
 |---|---|---|---|---|---|
 | 1 Reconnaissance | `100300`, `100130`, `100201` | `100140` (unrelated traffic) | pfSense | ❌ | ⚠️ |
-| 2 Brute Force | `100301` | `100301`, `60122` | Suricata, Windows | ✅ | ✅ |
-| 3 Successful Access | `100410` | `60115` (lockout) | Windows | ❌ | ⚠️ |
+| 2 Brute Force | `100301`, `100408` | `100301`, `60122`, `100408` (re-test) | Suricata, Windows | ✅ | ✅ |
+| 3 Successful Access | `100410` | `92657` (built-in, re-test) | Windows | ❌ | ⚠️ |
 | 4 Execution | `100401` | `100401` | Sysmon | ✅ | ✅ |
 | 5 Discovery | `100400`, `100402`, `100407` | `92031` | Sysmon (built-in) | ❌ | ⚠️ |
 | 6 Payload Drop | `100306` | `100306`, FIM, `87105` | Suricata, FIM, VirusTotal | ✅ | ✅ |
@@ -554,9 +616,9 @@ The chain was run in two sessions: Stages 1–7 on 2026-08-28 and Stages 8–10 
 
 **Reading the results**
 
-- **Behaviour coverage is better than rule coverage.** Eight of twelve steps were detected (seven with a raw alert, one by screenshot), but only four of them by the designed custom rule.
-- Every ⚠️ in Stages 5, 7 and 10 follows the same pattern: a built-in rule matched first. This is the single most valuable thing to resolve, because it affects how the custom rules are written and ordered (see `docs/03`, section 5).
-- Network detections (Suricata) were the most reliable: three of the four custom rules proven are Suricata rules.
+- **Behaviour coverage is better than rule coverage.** Nine of twelve steps are now detected (eight with a raw alert, one by screenshot), but only five of them by the designed custom rule.
+- Every ⚠️ in Stages 3, 5, 7 and 10 follows the same pattern: a built-in rule matched first. This is the single most valuable thing to resolve, because it affects how the custom rules are written and ordered (see `docs/03`, section 5, item 2 — now confirmed for `100406`/`92302` and newly identified for `100410`/`92657`, with `100412`/`63103` still unconfirmed after a parent-reference fix).
+- Network detections (Suricata) were the most reliable: three of the five custom rules proven are Suricata rules.
 
 ---
 
@@ -565,15 +627,15 @@ The chain was run in two sessions: Stages 1–7 on 2026-08-28 and Stages 8–10 
 | Priority | Stage | Gap | Action | Pass criteria |
 |---|---|---|---|---|
 | P1 | 11 | No evidence | Run the full procedure with Sysmon EID 3 enabled for the process | Raw alert `100413`; file hashes match on both hosts |
-| P1 | 8b | No raw alert; Event ID 10 was not logged by the committed Sysmon configuration | Reload the configuration (`sysmon64.exe -c`), re-run ProcDump, export the raw alerts | Raw alerts `100411` and, if the call trace matches, `100416`; `GrantedAccess` recorded |
-| P1 | 3 | Evidence is a lockout, not a logon | Unlock the account, run the login with a separate account or fewer Hydra attempts | Raw Event `4624` and an alert from `100410` |
-| P2 | 1 | Alert unrelated to the scan; no Suricata raw alert; pfSense clock offset | Re-run Nmap and capture Suricata `100300`; correct time zone / NTP on pfSense | Raw `100300` alert; pfSense timestamps within seconds of the manager |
-| P2 | 5, 7, 10 | Built-in rule fired instead of the custom rule | Feed the real raw event to `wazuh-logtest`; reorder or chain the custom rule under the built-in parent | Custom rule ID is the one reported by `wazuh-logtest` |
-| P2 | 2, 3 | SSH `4625` has no `ipAddress` | Correlate `100408` / `100410` on `win.eventdata.targetUserName` | Both rules fire in a repeat of Stages 2–3 |
+| P1 | 8b | No raw alert; Event ID 10 is enabled on paper (`sysmon_config.xml` fixed) but not re-tested | Reload the configuration (`sysmon64.exe -c`), re-run ProcDump, export the raw alerts | Raw alerts `100411` and, if the call trace matches, `100416`; `GrantedAccess` recorded |
+| P1 | 1 | WAN-side re-test attempted, no clean evidence (suspect NAT hairpin, see Stage 1) | Repeat the WAN-side scan with `tcpdump` on both pfSense interfaces (WAN and LAN) simultaneously | Confirm whether the true source IP survives the NAT hop; raw `100300` or pfSense alert with a genuine external `srcip` |
+| P2 | 3, 5, 7, 10 | Built-in rule fires instead of the custom rule — confirmed mechanism (`docs/03`, §5, item 2), fixes applied for `100406` (and partially `100412`), not yet for `100410`; `100402`/`100407` never fire for this stage regardless (see P3 below) | Apply `if_sid` chaining to the winning built-in rule for `100410` (→ `92657`) and re-confirm `100412` (→ `60002`, possibly `63103`) with `wazuh-logtest` | Custom rule ID is the one reported alongside the built-in in `wazuh-logtest` and in a live re-test |
+| ~~P2~~ | ~~2, 3~~ | ~~SSH `4625` has no `ipAddress`~~ | **Partially resolved**: the 2026-10-10 re-test's `4625`/`4624` events do carry `ipAddress`, so `same_field ipAddress` correlation is viable for that access path. Still unconfirmed for a pure OpenSSH `logonType 8` login (the original Stage 2 evidence) — re-test that specific path before relying on `ipAddress` correlation for it | — |
 | P3 | 5 | `100402` does not cover `net`, `net1`, `arp` | Extend the binary list or add a separate low-level rule | Alert for `net localgroup administrators` |
 | P3 | 6 | `1000011` does not match `.com` | Add `com`, `scr`, `vbs`, `js`, `msi` to the extension list | Alert on the EICAR URL |
 | P3 | 8 | Evidence is from rule revision 2 | Re-run with the listener up so the handshake completes | `100304` fires on revision 3 |
 | P3 | 6, 9 | FIM and VirusTotal evidence are screenshots | Export raw alert JSON and note the rule IDs | Raw JSON stored in the repository |
+| P3 | 3 | Re-test used SMB (`hydra ... smb://`, `smbclient`), confirmed — but no Suricata evidence captured for this protocol/session, and the original SSH `logonType 8` / no-`ipAddress` question (Stage 2) is still separately open | Capture Suricata `100303` (SMB Port Probe) for an SMB-based brute force; separately, re-run explicitly over SSH if a clean SSH-specific `4624`/`ipAddress` pair is still needed | Raw `100303` alert for the SMB run; raw SSH `4624` with populated `ipAddress`, if that path is re-tested |
 | P3 | All | Command typos hurt reproducibility | Apply the corrections in [Appendix C](#appendix-c--reproducibility-notes) | — |
 
 ---
@@ -598,7 +660,7 @@ The chain was run in two sessions: Stages 1–7 on 2026-08-28 and Stages 8–10 
 
 ## 9. Conclusion
 
-The lab shows that the planned detections can follow an intrusion from the first scan to data theft across several independent sources, and that logs forwarded off the host survive an attacker's cleanup. It also shows where the work is unfinished: half of the custom endpoint rules have not been proven because built-in rules fire first, three steps need a re-run, and exfiltration has no evidence yet. Section 7 lists the re-tests in priority order; completing the P1 items would give every stage a raw alert.
+The lab shows that the planned detections can follow an intrusion from the first scan to data theft across several independent sources, and that logs forwarded off the host survive an attacker's cleanup. A 2026-10-10 re-test closed the biggest evidence gap (Stage 3, now a genuine successful logon) and produced the first confirmed instance of the built-in-rule-wins pattern outside Sysmon (`92657` vs `100410`), reinforcing that this is a systemic trait of how the custom rules are chained, not a one-off. It also shows where the work is unfinished: most of the custom endpoint/authentication rules have not been proven because built-in rules fire first, two steps still need a clean re-run, and exfiltration has no evidence yet. Section 7 lists the re-tests in priority order; completing the P1 items would give every stage a raw alert.
 
 ---
 
@@ -619,8 +681,11 @@ Screenshots are stored in the repository under [`screenshot/`](../screenshot/), 
 | 9 | 7 Persistence | [`Stage7_persistence.png`](../screenshot/Stage7_persistence.png) |
 | 10 | 8 Command and Control | [`Stage8_C2.png`](../screenshot/Stage8_C2.png) |
 | 11 | 9 File Lifecycle | [`Stage9_fim.png`](../screenshot/Stage9_fim.png) |
+| 12 | 2 Brute Force, 2026-10-09 preliminary (`100408` fires, artifact `ipAddress`) | *not yet uploaded — suggested `Stage2_retest_2026-10-09_wrongip.png`* |
+| 13 | 3 Successful Access, 2026-10-10 re-test (searching Discover for `100410`, only built-in `60106`/`60118` found) | *not yet uploaded — suggested `Stage3_retest_discover_60106.png`* |
+| 14 | 3 Successful Access, 2026-10-10 re-test (`92657`, `67028`, `60122` sequence) | *not yet uploaded — suggested `Stage3_retest_92657.png`* |
 
-Stages 4, 8b, 10 and 11 have no screenshots; their evidence is the raw alert or, for 8b and 11, nothing yet.
+Stages 4, 8b, 10 and 11 have no screenshots; their evidence is the raw alert or, for 8b and 11, nothing yet. Figures 12–14 are from the 2026-10-10 Stage 2–3 re-test session; upload them to `screenshot/` under the suggested names and update the links above.
 
 ---
 
@@ -670,8 +735,8 @@ excerpt, rule mismatch) is recorded in the index linked at the end of this appen
 |---|---|---|
 | 0 Preparation | `00-preparation_kali.sh` | — |
 | 1 Reconnaissance | `01-reconnaissance_kali.sh` | `stage01-pfsense-synburst.json` |
-| 2 Brute Force | `02-bruteforce_kali.sh` | `stage02-suricata-ssh-bruteforce.json`, `stage02-windows-4625-failed-logon.json` |
-| 3 Successful Access | `03-successful-access_kali.sh` | `stage03-windows-4740-account-locked.json`, `stage03-rule-100410-correlation-excerpt.json` |
+| 2 Brute Force | `02-bruteforce_kali.sh` | `stage02-suricata-ssh-bruteforce.json`, `stage02-windows-4625-failed-logon.json`, `stage02-rule-100408-bruteforce-retest.json` |
+| 3 Successful Access | `03-successful-access_kali.sh` | `stage03-windows-4740-account-locked.json`, `stage03-rule-100410-correlation-excerpt.json`, `stage03-rule-92657-successful-logon.json` |
 | 4 Execution | `04-execution_windows.ps1` | `stage04-sysmon-encoded-powershell.json` |
 | 5 Discovery | `05-discovery_windows.cmd` | `stage05-sysmon-net1-discovery.json` |
 | 6 Payload Drop | `06-payload-drop_kali.sh`, `06-payload-drop_windows.cmd` | `stage06-suricata-eicar-download.json`, `stage06-virustotal-malicious-detected.json` |
