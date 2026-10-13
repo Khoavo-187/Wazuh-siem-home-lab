@@ -1,14 +1,86 @@
 {
-  "rule": {
-    "id": "100412",
-    "level": 15,
-    "description": "CRITICAL: Security Event Log was cleared - possible anti-forensics/cleanup WAZUH-AGENT-WIN11"
-  },
-  "data": {
-    "win": {
-      "system": {
-        "eventID": "1102"
+  "_index": "wazuh-alerts-4.x-2026.10.13",
+  "_id": "H-4YNqEBLi-8zP-Yg419",
+  "_score": null,
+  "_source": {
+    "input": {
+      "type": "log"
+    },
+    "agent": {
+      "ip": "192.168.60.1",
+      "name": "window11Host",
+      "id": "001"
+    },
+    "manager": {
+      "name": "wazuh"
+    },
+    "data": {
+      "win": {
+        "system": {
+          "eventID": "1102",
+          "keywords": "0x4020000000000000",
+          "providerGuid": "{fc65ddd8-d6ef-4962-83d5-6e5cfe9ce148}",
+          "level": "4",
+          "channel": "Security",
+          "opcode": "0",
+          "message": "\"The audit log was cleared.\r\nSubject:\r\n\tSecurity ID:\tS-1-5-21-701014724-483482641-3546372724-1001\r\n\tAccount Name:\tLENOVO\r\n\tDomain Name:\tLAPTOP-VF92GC15\r\n\tLogon ID:\t0x3D124\"",
+          "version": "1",
+          "systemTime": "2026-10-13T16:28:56.3527315Z",
+          "eventRecordID": "5728937",
+          "threadID": "37292",
+          "computer": "LAPTOP-VF92GC15",
+          "task": "104",
+          "processID": "4728",
+          "severityValue": "INFORMATION",
+          "providerName": "Microsoft-Windows-Eventlog"
+        },
+        "logFileCleared": {
+          "subjectLogonId": "0x3d124",
+          "clientProcessId": "6400",
+          "subjectUserSid": "S-1-5-21-701014724-483482641-3546372724-1001",
+          "subjectDomainName": "LAPTOP-VF92GC15",
+          "clientProcessStartKey": "151152062493633758",
+          "subjectUserName": "LENOVO"
+        }
       }
-    }
-  }
+    },
+    "rule": {
+      "firedtimes": 2,
+      "mail": true,
+      "level": 15,
+      "description": "CRITICAL: Windows Security Event Log cleared - Host: LAPTOP-VF92GC15",
+      "groups": [
+        "sysmon_local",
+        "windowslog_cleared",
+        "anti_forensics"
+      ],
+      "mitre": {
+        "technique": [
+          "Clear Windows Event Logs"
+        ],
+        "id": [
+          "T1070.001"
+        ],
+        "tactic": [
+          "Defense Evasion"
+        ]
+      },
+      "id": "100412"
+    },
+    "location": "EventChannel",
+    "decoder": {
+      "name": "windows_eventchannel"
+    },
+    "id": "1791908936.2836033",
+    "full_log": "{\"win\":{\"system\":{\"providerName\":\"Microsoft-Windows-Eventlog\",\"providerGuid\":\"{fc65ddd8-d6ef-4962-83d5-6e5cfe9ce148}\",\"eventID\":\"1102\",\"version\":\"1\",\"level\":\"4\",\"task\":\"104\",\"opcode\":\"0\",\"keywords\":\"0x4020000000000000\",\"systemTime\":\"2026-10-13T16:28:56.3527315Z\",\"eventRecordID\":\"5728937\",\"processID\":\"4728\",\"threadID\":\"37292\",\"channel\":\"Security\",\"computer\":\"LAPTOP-VF92GC15\",\"severityValue\":\"INFORMATION\",\"message\":\"\\\"The audit log was cleared.\\r\\nSubject:\\r\\n\\tSecurity ID:\\tS-1-5-21-701014724-483482641-3546372724-1001\\r\\n\\tAccount Name:\\tLENOVO\\r\\n\\tDomain Name:\\tLAPTOP-VF92GC15\\r\\n\\tLogon ID:\\t0x3D124\\\"\"},\"logFileCleared\":{\"subjectUserSid\":\"S-1-5-21-701014724-483482641-3546372724-1001\",\"subjectUserName\":\"LENOVO\",\"subjectDomainName\":\"LAPTOP-VF92GC15\",\"subjectLogonId\":\"0x3d124\",\"clientProcessId\":\"6400\",\"clientProcessStartKey\":\"151152062493633758\"}}}",
+    "timestamp": "2026-10-13T16:28:56.018+0000"
+  },
+  "fields": {
+    "timestamp": [
+      "2026-10-13T16:28:56.018Z"
+    ]
+  },
+  "sort": [
+    1791908936018
+  ]
 }
