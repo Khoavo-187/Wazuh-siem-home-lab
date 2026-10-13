@@ -1,0 +1,58 @@
+{
+  "agent": {
+    "ip": "192.168.60.1",
+    "name": "window11Host",
+    "id": "001"
+  },
+  "manager": {
+    "name": "wazuh"
+  },
+  "data": {
+    "win": {
+      "eventdata": {
+        "originalFileName": "arp.exe",
+        "image": "C:\\Windows\\System32\\ARP.EXE",
+        "parentProcessGuid": "{bf739fa6-b7e0-6acd-3325-000000001902}",
+        "description": "TCP/IP Arp Command",
+        "parentCommandLine": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\"",
+        "processGuid": "{bf739fa6-bbe5-6acd-2626-000000001902}",
+        "parentProcessId": "19628",
+        "processId": "21780",
+        "currentDirectory": "C:\\Users\\LENOVO\\",
+        "utcTime": "2026-10-13 05:04:37.677",
+        "parentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "commandLine": "\"C:\\Windows\\system32\\ARP.EXE\" -a",
+        "integrityLevel": "High",
+        "user": "LAPTOP-VF92GC15\\LENOVO",
+        "parentUser": "LAPTOP-VF92GC15\\LENOVO"
+      },
+      "system": {
+        "eventID": "1",
+        "channel": "Microsoft-Windows-Sysmon/Operational",
+        "computer": "LAPTOP-VF92GC15",
+        "providerName": "Microsoft-Windows-Sysmon",
+        "systemTime": "2026-10-13T05:04:37.6792171Z",
+        "eventRecordID": "2872934"
+      }
+    }
+  },
+  "rule": {
+    "firedtimes": 1,
+    "level": 5,
+    "description": "Sysmon: Shell spawned child process - Parent: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe | Child: C:\\Windows\\System32\\ARP.EXE | CMD: \"C:\\Windows\\system32\\ARP.EXE\" -a | User: LAPTOP-VF92GC15\\LENOVO",
+    "groups": [
+      "sysmon_local",
+      "windows",
+      "process_lineage",
+      "shell_child"
+    ],
+    "id": "100400"
+  },
+  "location": "EventChannel",
+  "decoder": {
+    "name": "windows_eventchannel"
+  },
+  "id": "1791867878.1726529",
+  "timestamp": "2026-10-13T05:04:38.622+0000",
+  "_index": "wazuh-alerts-4.x-2026.10.13"
+}

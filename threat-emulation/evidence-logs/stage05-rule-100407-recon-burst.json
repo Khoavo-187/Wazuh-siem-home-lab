@@ -1,0 +1,71 @@
+{
+  "agent": {
+    "ip": "192.168.60.1",
+    "name": "window11Host",
+    "id": "001"
+  },
+  "manager": {
+    "name": "wazuh"
+  },
+  "data": {
+    "win": {
+      "eventdata": {
+        "originalFileName": "sysinfo.exe",
+        "image": "C:\\Windows\\System32\\systeminfo.exe",
+        "parentProcessGuid": "{bf739fa6-b7e0-6acd-3325-000000001902}",
+        "description": "Displays system information",
+        "parentCommandLine": "\"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\"",
+        "processGuid": "{bf739fa6-bbe1-6acd-2226-000000001902}",
+        "parentProcessId": "19628",
+        "processId": "1072",
+        "currentDirectory": "C:\\Users\\LENOVO\\",
+        "utcTime": "2026-10-13 05:04:33.843",
+        "parentImage": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "commandLine": "\"C:\\Windows\\system32\\systeminfo.exe\"",
+        "integrityLevel": "High",
+        "user": "LAPTOP-VF92GC15\\LENOVO",
+        "parentUser": "LAPTOP-VF92GC15\\LENOVO"
+      },
+      "system": {
+        "eventID": "1",
+        "channel": "Microsoft-Windows-Sysmon/Operational",
+        "computer": "LAPTOP-VF92GC15",
+        "providerName": "Microsoft-Windows-Sysmon",
+        "systemTime": "2026-10-13T05:04:33.8451627Z",
+        "eventRecordID": "2872923"
+      }
+    }
+  },
+  "rule": {
+    "firedtimes": 1,
+    "mail": true,
+    "level": 12,
+    "description": "Sysmon: Multiple reconnaissance commands executed by LAPTOP-VF92GC15\\LENOVO within a short time - possible active enumeration",
+    "groups": [
+      "sysmon_local",
+      "windows",
+      "recon_burst",
+      "escalation_candidate"
+    ],
+    "mitre": {
+      "technique": [
+        "Account Discovery"
+      ],
+      "id": [
+        "T1087"
+      ],
+      "tactic": [
+        "Discovery"
+      ]
+    },
+    "id": "100407",
+    "frequency": 3
+  },
+  "location": "EventChannel",
+  "decoder": {
+    "name": "windows_eventchannel"
+  },
+  "id": "1791867874.1715144",
+  "timestamp": "2026-10-13T05:04:34.790+0000",
+  "_index": "wazuh-alerts-4.x-2026.10.13"
+}
