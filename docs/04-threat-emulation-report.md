@@ -428,6 +428,8 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "UpdaterSvc" /t 
 ![Figure 9 — Stage 7 evidence screenshot](../screenshot/Stage7_persistence.png)
 
 *Figure 9 — Stage 7 evidence screenshot (as placed in the original writeup).*
+![Figure 9 — Stage 7 evidence screenshot](../screenshot/Stage7_new.png)
+*Stage 7 evidence screenshot trigger for sysmon config rule.*
 
 **Alert observed**
 
