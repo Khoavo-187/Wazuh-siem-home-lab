@@ -284,28 +284,17 @@
 
 
   <!-- ========================================================= -->
-  <!-- 13. Suspicious connection to unusual port 4445         -->
+  <!-- 13. DATA exfiltration  -->
   <!-- ========================================================= -->
-  <rule id="100413" level="12">
-    <if_group>61605</if_group>
-
-    <field name="win.eventdata.destinationPort" type="pcre2">
-      ^(4444|4445|1337|9001|8080|8888)$
-    </field>
-
-    <description>
-      Suspicious outbound connection to unusual ports -
-      investigate possible command-and-control or data transfer:
-      $(win.eventdata.image) ->
-      $(win.eventdata.destinationIp):$(win.eventdata.destinationPort)
-    </description>
-
+  <rule id="100019" level="9">
+    <if_sid>60009</if_sid>
+    <field name="win.eventdata.contextInfo" type="pcre2">(?i)Invoke-WebRequest</field>
+    <field name="win.eventdata.payload" type="pcre2">(?i)(Uri|http|Post|InFile|C:\\)</field>
+    <description>Possible Powershell data exfiltration detected .</description>
     <mitre>
-      <id>T1041</id>
-      <id>T1071.001</id>
+      <id>T1059.001</id>
+      <id>T1567.002</id>
     </mitre>
-
-    <group>exfiltration,suspicious_network</group>
   </rule>
 
 
