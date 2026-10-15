@@ -1,6 +1,6 @@
 # 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + VirusTotal
 
-> A self-built Security Operations Center home lab focused on detection engineering, endpoint telemetry, network monitoring, MITRE ATT&CK-mapped threat emulation, evidence-based correlation, and false-positive triage. Validated outcomes and remaining gaps are documented separately.
+> A self-built Security Operations Center home lab focused on detection engineering, endpoint telemetry, network monitoring, MITRE ATT&CK-mapped threat emulation, and multi-source alert correlation.
 
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1e6d90)
 ![Suricata](https://img.shields.io/badge/IDS%2FIPS-Suricata-cc0000)
@@ -462,16 +462,20 @@ siem-wazuh/custom-rules/sysmon_rules.xml
 Examples:
 
 ```text
+100400 → Shell spawned child process (PowerShell, pwsh, cmd, net)
 100401 → Encoded PowerShell
-100402 → Discovery binaries
+100402 → Discovery binaries (whoami, systeminfo, tasklist, nltest, net, net1)
 100404 → Suspicious PowerShell / CMD network connection
-100406 → Registry Run key persistence (custom alert validated)
+100406 → Registry Run key persistence
+100407 → Correlation: multiple discovery binaries in a short window
 100408 → Failed login burst
 100410 → Successful login after failed-login burst
 100411 → Suspicious LSASS access
-100412 → Security log cleared (custom alert validated)
+100412 → Security log cleared
 100413 → Suspicious outbound connection on port 4445
 100414 → Suspicious LOLBin traffic on web ports
+100415 → LOLBin with download/decode arguments
+100416 → LSASS access with memory-dump call trace
 ```
 
 ---
@@ -517,19 +521,19 @@ The current validation results should be interpreted carefully.
 | Stage | Technique | Current Evidence |
 |---|---|---|
 | 1 | Reconnaissance | ⚠️ Re-test required; endpoint Suricata is the expected sensor |
-| 2 | Brute Force | ✅ Suricata + Windows failed-logon telemetry |
-| 3 | Successful Access | ⚠️ Real SMB successful `4624` / built-in `92657`; custom `100410` correlation unverified |
+| 2 | Brute Force | ✅ Suricata + Windows failed-logon telemetry; custom correlation rule `100408` confirmed firing (2026-10-10) |
+| 3 | Successful Access | ⚠️ Successful `4624` confirmed (2026-10-10, over SMB), but reported by a built-in rule (`92657`); custom `100410` not yet proven |
 | 4 | Encoded PowerShell | ✅ Custom detection observed |
-| 5 | Discovery | ✅ `100400` and `100407` full custom alerts; `100402` observed in dashboard re-test |
+| 5 | Discovery | ✅ Custom rules `100402`/`100407`/`100400` confirmed firing (2026-10-13 re-test) |
 | 6 | Payload Delivery | ✅ Suricata + FIM + VirusTotal evidence |
-| 7 | Persistence | ✅ Later full `100406` custom rule alert; historical built-in `92302` |
+| 7 | Persistence | ✅ Custom rule `100406` confirmed firing (2026-10-13 re-test), chained under the built-in rule |
 | 8 | Command & Control | ✅ Network detection observed; current rule revision requires re-test |
-| 8b | LSASS Access | ⚠️ Defender `MsMpEng.exe` → LSASS built-in `92900` **likely benign**; no verified ProcDump-origin `100411`/`100416` true positive |
-| 9 | File Lifecycle | ⚠️ FIM screenshot-level evidence; full stage-specific raw JSON not confirmed |
-| 10 | Anti-Forensics | ✅ Full raw custom `100412` (2026-10-13); earlier built-in `63103` |
-| 11 | Exfiltration | ❌ No confirmed completed transfer or positive custom `100413` |
+| 8b | LSASS Access | ⚠️ `procdump` not yet staged — only a false positive captured so far (Windows Defender's own scan, correctly ignored by custom rule `100411`, flagged by built-in `92900`) |
+| 9 | File Lifecycle | ⚠️ Screenshot evidence exists; raw JSON should be preserved |
+| 10 | Anti-Forensics | ✅ Custom rule `100412` confirmed firing twice (2026-10-13 re-test), no built-in `63103` observed alongside |
+| 11 | Exfiltration | ⚠️ Detection and raw evidence still need validation |
 
-The project intentionally documents detection gaps rather than treating every planned rule as already verified. **Stage 8b is a likely benign Defender LSASS-access alert (`92900`), not a verified ProcDump true-positive or custom `100411`/`100416` alert.** See `docs/04` Stage 8b.
+Full stage-by-stage analysis, raw alerts, and screenshots are in [`docs/04-threat-emulation-report.md`](docs/04-threat-emulation-report.md). The project intentionally documents detection gaps rather than treating every planned rule as already verified.
 
 ---
 
@@ -719,17 +723,27 @@ Wazuh-siem-home-lab/
 │       ├── suricata_rules.xml
 │       └── sysmon_rules.xml
 │
+├── threat-emulation/
+│   ├── README.md
+│   ├── attack-scripts/      — one script per chain stage, by host (Kali / Windows)
+│   └── evidence-logs/       — raw Wazuh alert JSON per stage, plus baseline tests
+│
 └── screenshot/
     ├── Stage1_recon.png
     ├── Stage2_bruteforce.png
+    ├── stage2_rule.png          — 2026-10-09 preliminary re-test
     ├── Stage3_access.png
     ├── Stage5_discovery.png
+    ├── stage5_evidence.png      — 2026-10-13 re-test
     ├── Stage6_payload1.png
     ├── Stage6_payload2.png
     ├── Stage6_payload3.png
     ├── Stage7_persistence.png
+    ├── stage7_new.png           — 2026-10-13 re-test
     ├── Stage8_C2.png
-    └── Stage9_fim.png
+    ├── stage8b_dump.png         — Windows Defender false positive
+    ├── Stage9_fim.png
+    └── stage10_cleanup.png      — 2026-10-13 re-test
 ```
 
 ---
@@ -781,7 +795,7 @@ Documents:
 
 ## Threat Emulation Report
 
-[`docs/04-threat-emulation-report.md`](docs/04-threat-emulation-report.md)
+[`docs/04-threat-emulation-report.md`](docs/04-threat-emulation-report.md) — raw evidence and attack scripts referenced from it live in [`threat-emulation/`](threat-emulation/)
 
 Documents:
 
@@ -855,20 +869,18 @@ still requires a dedicated validation run.
 
 ## 2. Some Custom Rules Are Not Yet Proven
 
-Several stages are currently detected by built-in Wazuh/Sysmon rules rather than the intended custom rules.
-
-Examples include:
+As of the 2026-10-13 re-test, this is down to two rules:
 
 ```text
-100410
-100411
-100416
-100413
+100410   → built-in 92657 still wins; the custom rule needs the same if_sid fix
+          applied to 100406 and 100412, plus a frequency regression reverted
+100411   → not yet tested with a true positive (procdump is not staged);
+          confirmed correctly silent on a Windows Defender false positive
 ```
 
-These require additional testing and raw alert evidence.
+`100402`, `100406` and `100412` were previously in this list and are now confirmed firing via raw alerts (see the Validation table above and `docs/04`). `100413` (Exfiltration) has not been tested at all yet, so it isn't a "built-in instead of custom" case — it's simply not evidenced.
 
-## 3. Evidence Quality Varies by Stage
+## 3. Raw Evidence Coverage Is Incomplete
 
 Some historical stages rely on:
 
@@ -876,7 +888,7 @@ Some historical stages rely on:
 - Condensed JSON excerpts
 - Earlier rule revisions
 
-Full later custom alerts have been preserved for Stage 5 (`100400`/`100407`), Stage 7 (`100406`), and Stage 10 (`100412`). Stage 8b has a full **built-in Defender-origin `92900` event**, but the old custom `100411` JSON is only a condensed excerpt. The Stage 3 `100410` excerpt is similarly insufficient to prove full correlated custom detection. All existing screenshots and evidence are retained unchanged.
+The final version of the project should preserve raw JSON evidence whenever possible.
 
 ## 4. Suricata Visibility Depends on Sensor Placement
 
@@ -903,13 +915,12 @@ must be treated as different visibility scenarios.
 Planned improvements include:
 
 - Validate the external-attacker topology through pfSense
-- Validate outstanding stages while retaining the current evidence as-is
+- Complete raw evidence collection for every attack stage
 - Re-test correlation rules
 - Improve endpoint network detections
 - Tune Suricata EVE ingestion to reduce unnecessary telemetry
 - Expand MITRE ATT&CK coverage
 - Build a Wazuh SOC dashboard for the full attack chain
-- Maintain current threat-emulation scripts and preserved raw evidence
 - Improve investigation and incident-response documentation
 
 ---
