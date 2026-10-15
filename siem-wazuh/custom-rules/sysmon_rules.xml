@@ -286,7 +286,7 @@
   <!-- ========================================================= -->
   <!-- 13. DATA exfiltration  -->
   <!-- ========================================================= -->
-  <rule id="100019" level="9">
+  <rule id="100413" level="9">
     <if_sid>60009</if_sid>
     <field name="win.eventdata.contextInfo" type="pcre2">(?i)Invoke-WebRequest</field>
     <field name="win.eventdata.payload" type="pcre2">(?i)(Uri|http|Post|InFile|C:\\)</field>
