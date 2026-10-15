@@ -1,6 +1,6 @@
 # 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + VirusTotal
 
-> A self-built Security Operations Center home lab focused on detection engineering, endpoint telemetry, network monitoring, MITRE ATT&CK-mapped threat emulation, and multi-source alert correlation.
+> A self-built Security Operations Center home lab focused on detection engineering, endpoint telemetry, network monitoring, MITRE ATT&CK-mapped threat emulation, evidence-based correlation, and false-positive triage. Validated outcomes and remaining gaps are documented separately.
 
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1e6d90)
 ![Suricata](https://img.shields.io/badge/IDS%2FIPS-Suricata-cc0000)
@@ -465,11 +465,11 @@ Examples:
 100401 → Encoded PowerShell
 100402 → Discovery binaries
 100404 → Suspicious PowerShell / CMD network connection
-100406 → Registry Run key persistence
+100406 → Registry Run key persistence (custom alert validated)
 100408 → Failed login burst
 100410 → Successful login after failed-login burst
 100411 → Suspicious LSASS access
-100412 → Security log cleared
+100412 → Security log cleared (custom alert validated)
 100413 → Suspicious outbound connection on port 4445
 100414 → Suspicious LOLBin traffic on web ports
 ```
@@ -518,18 +518,18 @@ The current validation results should be interpreted carefully.
 |---|---|---|
 | 1 | Reconnaissance | ⚠️ Re-test required; endpoint Suricata is the expected sensor |
 | 2 | Brute Force | ✅ Suricata + Windows failed-logon telemetry |
-| 3 | Successful Access | ⚠️ Successful `4624` not yet conclusively demonstrated |
+| 3 | Successful Access | ⚠️ Real SMB successful `4624` / built-in `92657`; custom `100410` correlation unverified |
 | 4 | Encoded PowerShell | ✅ Custom detection observed |
-| 5 | Discovery | ⚠️ Built-in Wazuh rule observed; custom rule needs verification |
+| 5 | Discovery | ✅ `100400` and `100407` full custom alerts; `100402` observed in dashboard re-test |
 | 6 | Payload Delivery | ✅ Suricata + FIM + VirusTotal evidence |
-| 7 | Persistence | ⚠️ Built-in Sysmon rule observed; custom rule needs verification |
+| 7 | Persistence | ✅ Later full `100406` custom rule alert; historical built-in `92302` |
 | 8 | Command & Control | ✅ Network detection observed; current rule revision requires re-test |
-| 8b | LSASS Access | ⚠️ Needs raw Sysmon Event ID 10 evidence |
-| 9 | File Lifecycle | ⚠️ Screenshot evidence exists; raw JSON should be preserved |
-| 10 | Anti-Forensics | ✅ Windows Event 1102 observed |
-| 11 | Exfiltration | ⚠️ Detection and raw evidence still need validation |
+| 8b | LSASS Access | ⚠️ Defender `MsMpEng.exe` → LSASS built-in `92900` **likely benign**; no verified ProcDump-origin `100411`/`100416` true positive |
+| 9 | File Lifecycle | ⚠️ FIM screenshot-level evidence; full stage-specific raw JSON not confirmed |
+| 10 | Anti-Forensics | ✅ Full raw custom `100412` (2026-10-13); earlier built-in `63103` |
+| 11 | Exfiltration | ❌ No confirmed completed transfer or positive custom `100413` |
 
-The project intentionally documents detection gaps rather than treating every planned rule as already verified.
+The project intentionally documents detection gaps rather than treating every planned rule as already verified. **Stage 8b is a likely benign Defender LSASS-access alert (`92900`), not a verified ProcDump true-positive or custom `100411`/`100416` alert.** See `docs/04` Stage 8b.
 
 ---
 
@@ -860,17 +860,15 @@ Several stages are currently detected by built-in Wazuh/Sysmon rules rather than
 Examples include:
 
 ```text
-100402
-100406
 100410
 100411
-100412
+100416
 100413
 ```
 
 These require additional testing and raw alert evidence.
 
-## 3. Raw Evidence Coverage Is Incomplete
+## 3. Evidence Quality Varies by Stage
 
 Some historical stages rely on:
 
@@ -878,7 +876,7 @@ Some historical stages rely on:
 - Condensed JSON excerpts
 - Earlier rule revisions
 
-The final version of the project should preserve raw JSON evidence whenever possible.
+Full later custom alerts have been preserved for Stage 5 (`100400`/`100407`), Stage 7 (`100406`), and Stage 10 (`100412`). Stage 8b has a full **built-in Defender-origin `92900` event**, but the old custom `100411` JSON is only a condensed excerpt. The Stage 3 `100410` excerpt is similarly insufficient to prove full correlated custom detection. All existing screenshots and evidence are retained unchanged.
 
 ## 4. Suricata Visibility Depends on Sensor Placement
 
@@ -905,13 +903,13 @@ must be treated as different visibility scenarios.
 Planned improvements include:
 
 - Validate the external-attacker topology through pfSense
-- Complete raw evidence collection for every attack stage
+- Validate outstanding stages while retaining the current evidence as-is
 - Re-test correlation rules
 - Improve endpoint network detections
 - Tune Suricata EVE ingestion to reduce unnecessary telemetry
 - Expand MITRE ATT&CK coverage
 - Build a Wazuh SOC dashboard for the full attack chain
-- Preserve reusable threat-emulation scripts and raw evidence
+- Maintain current threat-emulation scripts and preserved raw evidence
 - Improve investigation and incident-response documentation
 
 ---

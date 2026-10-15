@@ -374,7 +374,7 @@ A Wazuh rule can only fire if the event exists. The Sysmon configuration is [`sy
 |---|---|---|---|
 | **1** ProcessCreate | `100400`–`100403`, `100407` | `onmatch="exclude"`: everything is logged except the listed noise | Covered |
 | **3** NetworkConnect | `100404`, `100413`, `100414` | Include list: specific images (`powershell.exe`, `cmd.exe`, `certutil.exe`, `bitsadmin.exe`, `nc.exe`, …), any binary under `C:\Users`, `C:\ProgramData`, `C:\Windows\Temp`, and a port list (22, 3389, 4444, 5900, …). Excludes Defender, Teams, `*.microsoft.com`, loopback | `100404` and `100414` are covered because PowerShell / cmd / certutil are included. `100413` (port 4445) is logged only when the process matches the include list — port 4445 itself is **not** in the list |
-| **10** ProcessAccess | `100411`, `100416` | `include` filter on `\lsass.exe` (fixed — was empty) | Covered on paper; not yet re-verified against a live test |
+| **10** ProcessAccess | `100411`, `100416` | `include` filter on `\lsass.exe` (fixed — was empty) | EID 10 ingestion confirmed from Defender / built-in `92900`; custom positive not verified |
 | **11** FileCreate | `100405` | Include by extension and folder (`.exe`, `.dll`, `.ps1`, `.bat`, `\Downloads\`, `\Startup\`, …); no generic `\Temp\` or `\AppData\Roaming\` filter | The rule only sees files already selected by extension/folder, so in practice it flags **executables and scripts** written to Temp or Roaming |
 | **13** RegistryEvent | `100406` | Includes `CurrentVersion\Run` (covers `Run`, `RunOnce`, …) | Covered |
 | Security **4625 / 4624 / 1102** | `100408`, `100410`, `100412` | Not Sysmon — Windows Security log | Needs the `Security` channel (present) and the matching audit policy |
@@ -391,7 +391,7 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 
 | ID | Level | Trigger | Correlation | MITRE |
 |---|---|---|---|---|
-| `100400` | 5 | EID 1, `parentImage` ends with `powershell.exe` | none | none |
+| `100400` | 5 | Sysmon EID 1, shell parent `powershell`/`pwsh`/`cmd`/`net` (four discovery executables excluded) | none | none |
 | `100401` | 10 | EID 1, `image` ends with `powershell.exe`, command line matches an encoded-command switch (`-e`/`-ec`/`-en…`) followed by ≥20 non-space chars | none | T1027, T1059.001 |
 | `100402` | 6 | EID 1, image `whoami`, `systeminfo`, `tasklist`, `nltest`, `net` or `net1` | none | T1033, T1082, T1087 |
 | `100403` | 8 | EID 1, image `certutil` or `bitsadmin` | none | T1105 |
@@ -401,17 +401,16 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100406` | 10 | Child of built-in `92302`, key `…\CurrentVersion\Run` or `RunOnce` | none | T1547.001 |
 | `100407` | 12 | Rule `100402` | ≥3 / 120s, `same_field` user | T1087 |
 | `100408` | 10 | Rule `60122` (event 4625) with `ipAddress` ≠ `-` | ≥5 / 60s, `same_field` `ipAddress`, `ignore 120` | T1110 |
-| `100410` | 13 | Logon success `4624` (`60106`) after `100408` | ≥1 / 200s, `same_field` `ipAddress` | T1110, T1078 |
-| `100411` | 14 | EID 10, `targetImage` ends with `lsass.exe`, `sourceImage` not in the full-path allow-list, `grantedAccess` in a memory-read mask list | none | T1003.001 |
+| `100410` | 13 | Intended Security `4624` after `100408`; `if_sid=60106` | Current XML `frequency=2`, `timeframe=200`, `same_field ipAddress`; **unverified** | T1110, T1078 |
+| `100411` | 14 | EID 10, LSASS target, source-path exclusions, exact access masks | Positive custom alert not verified | T1003.001 |
 | `100416` | 15 | Child of `100411`, `callTrace` contains `dbghelp.dll`/`dbgcore.dll` or `UNKNOWN` | none | T1003.001 |
-| `100412` | 15 | Child of built-in `60002` (Security-channel base), `eventID = 1102` | none | T1070.001 |
+| `100412` | 15 | Windows Security event 1102 under parent `60002` | **Raw custom alert confirmed 2026-10-13** | T1070.001 |
 | `100413` | 12 | EID 3, destination port `4445` | none | T1041 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
 #### `100400` — Shell spawned child process (level 5)
-`if_group sysmon_event1` plus a PCRE2 match on `parentImage`. The description shows parent, child, command line and user, which gives the process lineage in one line. **No longer a parent of `100401`** (see below — that rule is now independent). Scheduled tasks and management agents that wrap a shell also trigger it, so keep it at a low level.
 
-Fixed, 2026-10-13: the `description` field was missing a closing `)` on `$(win.eventdata.user` (truncated the rendered alert text; cosmetic, rule logic was unaffected) — confirmed fixed via a raw re-test alert (`docs/04`, Stage 5). Renamed from "PowerShell spawned process" / group `powershell_child` to "Shell spawned child process" / group `shell_child`; **not yet confirmed** whether `parentImage` was widened beyond `(?i)powershell\.exe$` (e.g. to also include `cmd.exe`) or only the description/group text changed — needs the current rule XML to confirm.
+The committed XML matches Sysmon Event ID 1 when `parentImage` ends with `powershell.exe`, `pwsh.exe`, `cmd.exe`, or `net.exe`. A negated child-image condition excludes `whoami.exe`, `systeminfo.exe`, `tasklist.exe`, and `nltest.exe`, which are instead detected under `100402`. **`net.exe` and `net1.exe` are not included in this exclusion, even though they appear in `100402`**, so overlapping candidate matches remain possible. `100400` and `100401` are independent rules, not parent/child. The full [2026-10-13 `100400` alert](../threat-emulation/evidence-logs/stage05-rule-100400-shell-child-arp.json) confirms an `ARP.EXE` child of PowerShell, including correctly rendered parent, image, command line and user. A shell spawning ARP is a context signal, not proof of malicious behavior.
 
 #### `100401` — Encoded PowerShell command (level 10)
 Fixed: originally a child of `100400` (only fired when the process was *started by PowerShell*, missing `cmd.exe → powershell -enc …` or `explorer.exe → powershell -enc …`) and only matched `-enc`/`-encodedcommand`/`-e`, missing abbreviations like `-ec`/`-en`. Now independent (`if_group sysmon_event1`, no parent dependency) with a wider switch pattern:
@@ -424,9 +423,8 @@ Fixed: originally a child of `100400` (only fired when the process was *started 
 `[-/](?:e|ec|en[a-z]*)` accepts `-e`, `-ec`, `-enc`, `-encodedcommand`, and the `/` variant; `\S{20,}` requires a long non-space payload after the switch, so it still needs the Base64-looking argument to avoid matching ordinary short flags. Encoding hides the payload from simple string detection (T1027) while running PowerShell (T1059.001).
 
 #### `100402` — Reconnaissance binary (level 6)
-EID 1 where `image` ends with `whoami`, `systeminfo`, `tasklist` or `nltest`. These are standard discovery tools (T1033 system owner, T1082 system information). Individually they are normal admin activity, hence the low level and the correlation in `100407`.
 
-**Scope widened, 2026-10-13.** Originally missed `net.exe`/`net1.exe`/`arp.exe` (the account-discovery and network-neighbour commands actually run in the Stage 5 emulation) — this was a scope gap, not a precedence issue (unlike `100406`/`100410`/`100412` above). `net.exe`/`net1.exe` are now confirmed in the pattern via a raw-alert re-test (`docs/04`, Stage 5). **Not yet confirmed**: whether `arp.exe` was also added — in the same re-test it only triggered the generic `100400` ("Shell spawned child process"), not `100402`. Add `arp` to the pattern if parity with `net`/`net1` is wanted.
+The **current XML** image regex covers `whoami.exe`, `systeminfo.exe`, `tasklist.exe`, `nltest.exe`, `net.exe`, and `net1.exe`. It **does not include `arp.exe`**. `dir` is a shell built-in and is not detected as a standalone process by this regex. The October 13 re-test displayed `100402` rows for discovery binaries, while the preserved full [custom `100407` correlation alert](../threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json) confirms three discovery events from one user within 120 seconds. [Custom `100400` evidence](../threat-emulation/evidence-logs/stage05-rule-100400-shell-child-arp.json) separately confirms ARP triggered the broader process-lineage detector. These executables are also used by legitimate administrators; each event requires context.
 
 #### `100403` — LOLBin download/decode (level 8)
 EID 1 for `certutil.exe` or `bitsadmin.exe`, both able to fetch or decode files (T1105). The rule does not inspect arguments, so legitimate certificate operations also match — kept deliberately low-fidelity as a base signal; `100415` below adds the high-fidelity child.
@@ -441,9 +439,10 @@ EID 3 where the image is `powershell.exe` or `cmd.exe`. Shells rarely need direc
 EID 11 with `targetFilename` containing `\Temp\` or `\AppData\Roaming\`. As explained in §3.1, Sysmon only logs executable/script extensions and a few folders, so the effective detection is *"executable or script dropped into Temp/Roaming"* (T1105).
 
 #### `100406` — Registry Run key persistence (level 10)
-`targetObject` matching `(?i)\\CurrentVersion\\(?:Run|RunOnce)(?:\\|$)` (T1547.001). Covers both HKLM and HKCU. Other autostart locations (`Winlogon`, `Policies\Explorer\Run`, services) are logged by Sysmon but not matched by this rule.
 
-**Chained under the built-in rule, not a sibling of it.** The first version used `<if_group>sysmon_event_13</if_group>`, making it a sibling of Wazuh's own built-in registry-Run-key rule (`92302`, same group). A 2026-08-28 test run showed `92302` firing instead of `100406` for a real Run-key write — Wazuh evaluates sibling rules under one group and settles on a single match, and the built-in rule won. The fix: `<if_sid>92302</if_sid>` instead of the group tag, so `100406` is only evaluated **after** `92302` has already matched (a child, not a competitor) — both alerts now fire for the same event. See `docs/04`, Stage 7, for the original evidence.
+The current XML is a child of built-in `92302` (`<if_sid>92302</if_sid>`), and additionally requires a target registry object matching `\CurrentVersion\Run\` or `\CurrentVersion\RunOnce\` (MITRE T1547.001). It therefore inherits the detection scope of `92302`; it is not a universal registry-persistence detector.
+
+**Evidence update:** the historical [built-in `92302` alert](../threat-emulation/evidence-logs/stage07-sysmon-registry-runkey.json) and a later **full [custom `100406` level-10 alert](../threat-emulation/evidence-logs/stage07-sysmon-registry-custom-rule.json)** are both preserved. The custom event is dated **2026-10-13**, and contains `reg.exe` modifying the `HKU\<SID>\Software\Microsoft\Windows\CurrentVersion\Run\UpdaterSvc` value. These are separate test events; they do **not** establish that two alert IDs appear simultaneously for one event. The registry write is confirmed, but execution on a later user logon was not verified.
 
 #### `100407` — Multiple reconnaissance commands (level 12)
 Correlation on `100402`: ≥3 recon binaries from the same `win.eventdata.user` within 120s. A single `whoami` is routine; a burst of discovery commands is **active enumeration** (T1087). It depends on `100402` actually being the rule that fires for those events (see precedence note, §5 item 2).
@@ -452,24 +451,24 @@ Correlation on `100402`: ≥3 recon binaries from the same `win.eventdata.user` 
 Correlation on rule `60122` (failed logon, event 4625): ≥5 failures from the same `ipAddress` within 60s. Entries with `ipAddress` equal to `-` (local logons without a source address) are excluded by a negated field match. Mapped to T1110. It fits network logons (RDP, SMB, OpenSSH for Windows).
 
 #### `100410` — Successful logon after a failed-logon burst (level 13)
-Fires when a **4624** (`60106`) arrives from an `ipAddress` that previously triggered `100408`. This ordering — many failures followed by a success — is the classic pattern of a guessed password (T1110 → T1078). Fixed: now has explicit `frequency="1" timeframe="200"` (previously relied on Wazuh's implicit default window).
 
-**Second built-in competitor, found 2026-10-10.** A re-test of Stages 2–3 (fresh evidence, correct `ipAddress`) produced a real `100408` alert followed by a real `4624` — but the alert that appeared was Wazuh's built-in `92657` ("Successful Remote Logon Detected... possible pass-the-hash attack"), not `100410`. `92657` is almost certainly another child of `60106` (same parent as `100410`'s current `if_sid`), so this is the same sibling-precedence pattern as `100406` vs `92302`. **Not yet fixed in the rule file.** The same remedy applies: chain `100410` under `92657` instead of `60106` — `<if_sid>92657</if_sid>`, keeping `<if_matched_sid>100408</if_matched_sid>` — so it only evaluates once `92657` has matched. Caveat: `92657`'s own description talks about RDP and pass-the-hash, and its MITRE tags include T1021.001 (RDP) — this is built-in boilerplate for any NTLM network logon (type 3). The real access in this test was **SMB** (`smbclient`, after Hydra brute-forced the SMB service), not RDP and not SSH — the real technique is T1021.002 (SMB/Windows Admin Shares). Don't read the built-in wording or its MITRE tags as a confirmed RDP/PtH finding. See `docs/04`, Stage 3, for the raw evidence.
+**Intended:** correlate a successful Security Event `4624` after an IP-attributed failed-logon burst (`100408`). **Actual committed XML:** `if_sid=60106`, `if_matched_sid=100408`, `frequency="2"`, `timeframe="200"`, and `same_field=win.eventdata.ipAddress`. This differs from older prose claiming `frequency="1"`. A full October 10 SMB re-test confirms custom `100408` followed by a genuine `4624` classified as **built-in `92657`**, not as `100410`. The [file named `stage03-rule-100410-correlation-excerpt.json`](../threat-emulation/evidence-logs/stage03-rule-100410-correlation-excerpt.json) is condensed and lacks full source-event provenance; do not count it as end-to-end confirmation of the custom correlation. Competing built-in rules are a hypothesis, not a proven sole explanation. A controlled event-order, same-IP/different-IP test is required. Failed attempts followed by a successful login can indicate suspicious access but do not by themselves prove password cracking.
 
-#### `100411` — LSASS memory access (level 14)
-EID 10 where `targetImage` ends with `lsass.exe` (T1003.001). Two conditions narrow it, both tightened since the first draft:
-- `sourceImage` allow-list by **full executable path** (`C:\Windows\System32\svchost.exe`, `taskmgr.exe`, `wininit.exe`, `csrss.exe`, `services.exe`, `wbem\WmiPrvSE.exe`, plus the Defender `MsMpEng.exe` paths) — fixed from an earlier version that matched by file name only (`(?:taskmgr|svchost|MsMpEng)\.exe$`), which a malicious binary could trivially spoof by using the same name in a different folder.
-- `grantedAccess` restricted to a list of access masks that allow reading process memory (`0x1010`, `0x1410`, `0x1438`, `0x143a`, `0x1f0fff`, `0x1f1fff`, `0x1f3fff`, `0x1fffff`) — excludes masks like `0x1000`/`0x1400` that only query process information.
+#### `100411` — Suspicious LSASS ProcessAccess (level 14)
 
-**Telemetry fixed, not yet re-verified.** `sysmon_config.xml`'s `ProcessAccess` section was empty (no EID 10 logged at all) — it now has an `include` filter on `\lsass.exe`. This has not been confirmed against a live `ProcDump` test since the change (Stage 8b in `docs/04` is still ⚠️).
+The current XML uses **`<if_group>sysmon_event_10</if_group>`**, not `<if_sid>92900</if_sid>`. It matches a target ending in `lsass.exe`, excludes selected legitimate executable **paths** (including Microsoft Defender), and requires one of eight exact access masks: `0x1010`, `0x1410`, `0x1438`, `0x143a`, `0x1f0fff`, `0x1f1fff`, `0x1f3fff`, `0x1fffff`. This exact-mask test may miss other suspicious access combinations; paths alone do not prove a binary's identity. The current alert description uses “Unauthorized”, although the XML does not prove authorization status or successful credential extraction.
 
-#### `100416` — LSASS access with memory-dump call trace (level 15)
-Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `dbghelp.dll` or `dbgcore.dll` (the DLLs behind `MiniDumpWriteDump`) or the literal string `UNKNOWN` (code running from unbacked memory — also seen with JIT'd .NET code, so treat `UNKNOWN` alone as weaker signal than the DLL match). Not yet exercised by a real test.
+**Confirmed telemetry, not a true positive:** the full [Stage 8b event](../threat-emulation/evidence-logs/stage08b-rule-100411-lsass-false-positive-windowsdefender.json) is a **built-in `92900`** alert (level 12) for `MsMpEng.exe` under `C:\ProgramData\Microsoft\Windows Defender\Platform\...` accessing `lsass.exe` with `grantedAccess=0x101000`. Its call trace contains many Defender `mpengine.dll` frames. The event is **consistent with legitimate Defender activity, likely benign/false-positive candidate**. It cannot prove that ProcDump accessed LSASS or dumped credentials. The Defender source path is excluded by `100411` and `0x101000` is not one of its accepted exact masks. Therefore, the current custom rule should **not** select this event. The custom exclusion does **not** suppress built-in `92900`.
 
-#### `100412` — Security log cleared (level 15)
-`win.system.eventID = 1102` (audit log cleared). Clearing the log is anti-forensics (T1070.001), hence the highest level in the set.
+The old [short `100411` excerpt](../threat-emulation/evidence-logs/stage08b-rule-100411-lsass-excerpt.json) lacks complete agent, decoder, timestamp, access mask and call-trace evidence. It is an **unverified illustration** rather than a full positive event.
 
-**Parent reference was wrong, now corrected.** The rule originally chained from `60117` — this turned out not to be a confirmed ancestor of eventchannel Security events, so `100412` may never have been reached in the rule tree at all for the real `1102` event (a different problem from sibling precedence: the parent itself likely never matched). Per Wazuh's own documented eventchannel chain (all eventchannel logs → `60000` → Security channel specifically → `60002`), `if_sid` is now `60002`, a confirmed real ancestor. **Still unverified against a live test**: the built-in `63103` fired instead of `100412` in the 2026-08-28 evidence (captured when the rule still used `60117`); it is not yet known whether `100412` now co-fires alongside `63103` as a proper child, or still loses as a sibling under `60002` (same precedence pattern as `100406`/`100410`) and needs `<if_sid>63103</if_sid>` instead. See `docs/04`, Stage 10.
+#### `100416` — LSASS call-trace escalation (level 15)
+
+Child of `100411`, with `callTrace` matching `dbghelp.dll`, `dbgcore.dll`, or the literal token `UNKNOWN`. The Defender event does not contain these patterns. An `UNKNOWN` frame by itself is not proof of malicious dumping. **No complete true-positive `100416` alert has been preserved**.
+
+#### `100412` — Windows Security log cleared (level 15)
+
+The current XML uses `<if_sid>60002</if_sid>` and checks `win.system.eventID=1102` (T1070.001). **A full custom level-15 [rule `100412` alert](../threat-emulation/evidence-logs/stage10-rule-100412-excerpt.json) is now available from 2026-10-13.** Its filename includes `excerpt`, but its content contains full Wazuh event metadata and a timestamp. The original 2026-08-29 [built-in `63103` alert](../threat-emulation/evidence-logs/stage10-windows-1102-log-cleared.json) is a **separate** event, not proof that both rules fired for one event. The alerts establish that clearing was detected; they do not restore deleted on-host records.
 
 #### `100413` — Connection to port 4445 (level 12)
 EID 3 with `destinationPort` equal to `4445`. This is a **lab-specific indicator** for the exfiltration stage (T1041). As the README notes (*Behavior > signatures*), a hard-coded port is easy to change; `100404` and `100414` cover the behaviour. In addition, EID 3 for this port is only logged when the process matches the Sysmon include list.
@@ -477,20 +476,19 @@ EID 3 with `destinationPort` equal to `4445`. This is a **lab-specific indicator
 #### `100414` — PowerShell / certutil on web ports (level 12)
 EID 3 where the image is `powershell.exe` or `certutil.exe` and the port is 80 or 443. Standard web ports blend into normal traffic; a scripting engine or LOLBin using them is the signal (T1041, T1105). Expect some noise from legitimate scripts; baseline and exclude known destinations.
 
-### 3.4 Correlation chains
+### 3.4 Correlation chains and observed results
 
 ```text
-Brute force → compromise
-  4625 ─► 60122 ─► 100408  (≥5 failures / 60s, same ipAddress)  — confirmed firing, 2026-10-10
-                         └─► 4624 (60106) ─► built-in 92657 fires instead of 100410  (2026-10-10 re-test)
-
-Active enumeration
-  EID 1: whoami / systeminfo / tasklist / nltest ─► 100402 ─► 100407  (≥3 / 120s, same user)
-
-PowerShell lineage (100400 and 100401 are now independent rules, not chained)
-  EID 1: parent powershell.exe ─► 100400
-  EID 1: image powershell.exe, encoded switch ─► 100401
+Discovery:        Sysmon EID 1 → 100402 → repeated events / same user → 100407 [RAW CUSTOM CONFIRMED]
+Authentication:   Windows 4625 → 60122 → 100408 [RAW CUSTOM CONFIRMED]
+                  Windows 4624 → 92657 [RAW BUILT-IN CONFIRMED]; intended 100410 [NOT PROVEN]
+Persistence:      Sysmon EID 13 → 92302 [EARLIER BUILT-IN] / 100406 [LATER RAW CUSTOM]
+Credential access:Sysmon EID 10 → Defender MsMpEng.exe → 92900 [LIKELY BENIGN]
+                  Suspicious 100411 / 100416 [NOT PROVEN]
+Anti-forensics:   Security 1102 → 63103 [EARLIER BUILT-IN] / 100412 [LATER RAW CUSTOM]
 ```
+
+The historical built-in and newer custom alert files belong to **different test timestamps**. A chain indicates rule hierarchy/intent, not multiple independent alerts for every event.
 
 ### 3.5 File Integrity Monitoring & VirusTotal
 
@@ -531,12 +529,12 @@ File created/modified in a monitored folder
 | Discovery | T1018 Remote System Discovery | `100201` |
 | Discovery | T1033 / T1082 / T1087 | `100402`, `100407` |
 | Initial Access | T1133 External Remote Services | `100302` |
-| Initial Access / Defense Evasion | T1078 Valid Accounts | `100410` |
+| `100410` | 13 | Intended Security `4624` after `100408`; `if_sid=60106` | Current XML `frequency=2`, `timeframe=200`, `same_field ipAddress`; **unverified** | T1110, T1078 |
 | Credential Access | T1110 Brute Force | `100301`, `100408`, `100410` |
-| Credential Access | T1003.001 LSASS Memory | `100411` |
+| `100411` | 14 | EID 10, LSASS target, source-path exclusions, exact access masks | Positive custom alert not verified | T1003.001 |
 | Execution | T1059.001 PowerShell | `100401` |
 | Defense Evasion | T1027 Obfuscated Files or Information | `100401` |
-| Defense Evasion | T1070.001 Clear Windows Event Logs | `100412` |
+| `100412` | 15 | Windows Security event 1102 under parent `60002` | **Raw custom alert confirmed 2026-10-13** | T1070.001 |
 | Persistence | T1547.001 Registry Run Keys | `100406` |
 | Command and Control | T1071 / T1071.004 | `100304`, `100307`, `100404`, `100308` (sid `1000010`) |
 | Command and Control | T1105 Ingress Tool Transfer | `100306`, `100403`, `100415`, `100405`, `100414`, `100309` (sid `1000011`) |
@@ -547,63 +545,21 @@ File created/modified in a monitored folder
 
 ## 5. Known issues and recommendations
 
-Ordered by impact. Items marked *hypothesis* need confirmation with `wazuh-logtest` (§6). ✅ **Resolved** items are kept for history — they record what the problem was and what the fix looked like, not a current to-do.
+| Topic | Current evidence | Interpretation |
+|---|---|---|
+| `100406` persistence | Earlier built-in `92302`; **later complete custom `100406`** | Custom rule **validated** for the observed Run-key write. |
+| `100412` log clearing | Earlier built-in `63103`; **later complete custom `100412`** | Custom rule **validated** for Security Event 1102. |
+| `100410` correlation | Full `100408` and full built-in `92657`, but only condensed `100410` excerpt | Custom positive correlation **not independently validated**; current `frequency=2`. |
+| `100411` / `100416` | Full Defender-related EID 10 / built-in `92900`; only partial `100411` excerpt | **LSASS telemetry works; no ProcDump-sourced true positive.** Defender is likely benign. |
+| `100400` / `100402` overlap | `100400` excludes four of six `100402` binaries | `net.exe` / `net1.exe` can overlap; `arp.exe` is only in `100400` for a shell parent. |
+| `100415` | XML has child of `100403` | No separate positive alert confirmed here. |
+| Multi-line PCRE2 | Some current field values contain indentation/newlines | Test behavior with `wazuh-logtest`; avoid assuming exact matching from code formatting alone. |
+| `100401` description | A stray `CMD"` appears in XML | Cosmetic text issue, not a detection result. |
+| Network attribution | Same-LAN traffic, pfSense routing, possible NAT hairpin | Verify path and source IP before attributing a pfSense block alert to Kali. |
+| Suricata / stage 8 | Preserved alert uses older Suricata signature revision | Raw event validates **that revision only**. |
+| Stage 11 | No verified completed transfer | Port `4445` indicator alone cannot prove exfiltration. |
 
-| # | Issue | Impact | Status / recommendation |
-|---|---|---|---|
-| 1 | ✅ **EID 10 was not logged** by `sysmon_config.xml` (empty `ProcessAccess` include) | `100411` could never fire | **Resolved**: `include` filter on `\lsass.exe` added (snippet below). Not yet re-verified against a live test |
-| 2 | **Rule precedence** *(hypothesis, now confirmed in 2 of 4 candidates)*: when several sibling rules under one group/parent match the same event, Wazuh reports a single rule — the README already records custom rules "silently overridden by the default ruleset" | A custom rule can be shadowed by a built-in one for the same event | Confirmed via `docs/04` evidence for **`100406` vs `92302`** (fixed: `100406` now chains under `92302`) and **`100412` vs `63103`** (parent corrected to `60002`, not yet confirmed whether it still loses to `63103`). Newly found **`100410` vs `92657`** (not yet fixed — see its entry in §3.3). `100402` was *initially suspected* but turned out to be a scope gap, not precedence (§3.3, `100402`/`docs/04` Stage 5) — removed from this list. Still unconfirmed whether `100404` shadows `100413`/`100414` under `sysmon_event3` |
-| 3 | ✅ `100401` was a child of `100400` | Only caught `powershell -enc` started **by PowerShell** | **Resolved**: independent rule, wider switch regex (§3.3) |
-| 4 | ✅ sids `1000010` and `1000011` had no Wazuh wrapper | Their alerts were not classified or scored | **Resolved**: `100308` / `100309` added (§2.5) |
-| 5 | ✅ `100410` had no explicit `frequency` / `timeframe` | Correlation window was implicit | **Resolved**: `frequency="1" timeframe="200"` added |
-| 6 | ✅ `1000006` alerted on every packet of an established flow | Alert flood | **Resolved**: `threshold:type limit, track by_dst, count 1, seconds 60` added |
-| 7 | ✅ `1000005` paired T1046 with tactic `TA0043` | Wrong tactic in metadata | **Resolved**: now `TA0007` (Discovery) |
-| 8 | Multi-line PCRE2 values inside `<field>` (whitespace and newlines around the pattern) | Depends on how the XML parser trims content; still present in `100402`, `100403`, `100405`, `100413` | Write each pattern on one line and re-test after any reformatting — not yet done |
-| 9 | ✅ `ossec.conf` declared `eve.json` three times | Possible duplicate events and agent warnings | **Resolved**: a single `localfile` block |
-| 10 | ✅ `100200` (level 7) alerted on every ICMP packet; `100140` could reach its threshold on normal HTTPS bursts | Noise | **Resolved**: `100200` is level 3 + `no_log`; `100140` restricted to admin-service ports |
-| 11 | `100413` hard-codes port 4445 | Blind spot if the port changes | Accepted trade-off: kept as a lab marker; `100404` / `100414` cover the behaviour |
-| 12 | `local.rules` sid `1000011` extension list (`.sh/.ps1/.exe/.bat/.dll`) doesn't include `.com` | Missed the EICAR file downloaded in the Stage 6 emulation (`eicar-facebook.com`) | Add `com`, `scr`, `vbs`, `js`, `msi` to the `pcre` extension list |
-| 13 | ✅ `sysmon_rules.xml`, rule `100400`: `description` was missing a closing `)` on `$(win.eventdata.user` | Field substitution didn't resolve correctly in the alert text; cosmetic only | **Resolved** — confirmed via a 2026-10-13 raw alert showing the full value |
-| 14 | `sysmon_rules.xml`, rule `100401`: stray `"` in `description` (`CMD\" $(...)`) | Cosmetic typo in the alert text | Fix to `CMD:` |
-| 15 | `suricata_rules.xml`, rule `100308`: description has "shell banner **send** outbound" and "**possble** reverse shell" | Cosmetic typos | Fix to "sent" / "possible" |
-
-**Snippet for item 1** — now applied in `sysmon_config.xml`:
-
-```xml
-<ProcessAccess onmatch="include">
-  <TargetImage name="LSASS access" condition="end with">\lsass.exe</TargetImage>
-</ProcessAccess>
-```
-
-**Snippet for item 3** — now applied in `sysmon_rules.xml` as the live `100401`:
-
-```xml
-<rule id="100401" level="10">
-  <if_group>sysmon_event1</if_group>
-  <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
-  <field name="win.eventdata.commandLine" type="pcre2">(?i)(?:^|\s)[-/](?:e|ec|en[a-z]*)\s+\S{20,}</field>
-  <description>Sysmon: Encoded PowerShell command from $(win.eventdata.user) - possible command obfuscation | parent:$(win.eventdata.parentImage) | CMD: $(win.eventdata.commandLine)</description>
-  <mitre><id>T1027</id><id>T1059.001</id></mitre>
-  <group>obfuscation,suspicious_powershell</group>
-</rule>
-```
-
-**Snippet for item 2's newest instance (`100410` vs `92657`, not yet applied)** — same pattern used for `100406`:
-
-```xml
-<rule id="100410" level="13" frequency="1" timeframe="200">
-  <if_sid>92657</if_sid>
-  <if_matched_sid>100408</if_matched_sid>
-  <field name="win.system.eventID">^4624$</field>
-  <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^-$</field>
-  <same_field>win.eventdata.ipAddress</same_field>
-  <description>CRITICAL: Successful login after multiple failed logon attempts from $(win.eventdata.ipAddress) - possible compromised credentials</description>
-  <mitre><id>T1110</id><id>T1078</id></mitre>
-  <group>authentication_success,possible_compromise</group>
-</rule>
-```
-
----
+**Reporting convention:** A rule written in XML is **configured**, a raw source event is **telemetry confirmed**, a full event with the actual custom rule ID is **custom-validated**, and a complete attacker objective requires **separate outcome evidence**. Never promote a likely benign event or condensed illustrative excerpt to a proven true positive.
 
 ## 6. Validation
 
