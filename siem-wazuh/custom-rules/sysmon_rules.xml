@@ -287,14 +287,14 @@
   <!-- 13. Suspicious connection to unusual port 4445         -->
   <!-- ========================================================= -->
   <rule id="100413" level="12">
-    <if_group>sysmon_event3</if_group>
+    <if_group>61605</if_group>
 
     <field name="win.eventdata.destinationPort" type="pcre2">
-      ^4445$
+      ^(4444|4445|1337|9001|8080|8888)$
     </field>
 
     <description>
-      Suspicious outbound connection to port 4445 -
+      Suspicious outbound connection to unusual ports -
       investigate possible command-and-control or data transfer:
       $(win.eventdata.image) ->
       $(win.eventdata.destinationIp):$(win.eventdata.destinationPort)
@@ -302,6 +302,7 @@
 
     <mitre>
       <id>T1041</id>
+      <id>T1071.001</id>
     </mitre>
 
     <group>exfiltration,suspicious_network</group>
