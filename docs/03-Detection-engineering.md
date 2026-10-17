@@ -495,6 +495,8 @@ Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `
 2. Windows does not populate `ContextInfo`/`Payload` by default — Module Logging must be turned on via Group Policy (*Administrative Templates → Windows Components → Windows PowerShell → Turn on Module Logging*, module name list set to `*`).
 
 **False-positive risk, by design of the pattern:** `Uri`/`http`/`Post` alone matches any legitimate script calling a REST API (webhooks, license checks, telemetry) — not just exfiltration. `InFile` and a literal `C:\` path are the stronger signals (they imply a local file is the payload being sent); `Uri`/`http`/`Post` alone are weak signals that happen to also be required. No current evidence has been captured either way — see `docs/04`, Stage 11.
+- There is many rules catching `data exfiltration` through many cmdlet. For example: `curl`,`bitsadmin`,`certutil`,.. . You can custom with your own rules with regex for matching those exfiltrate data commandline
+**Check more from here**: [Wazuh rules for data exfiltration](https://wazuh.com/blog/detecting-data-exfiltration-using-living-off-the-land-tools-with-wazuh/)
 
 #### `100414` — PowerShell / certutil on web ports (level 12)
 EID 3 where the image is `powershell.exe` or `certutil.exe` and the port is 80 or 443. Standard web ports blend into normal traffic; a scripting engine or LOLBin using them is the signal (T1041, T1105). Expect some noise from legitimate scripts; baseline and exclude known destinations.
