@@ -6,5 +6,6 @@ set -euo pipefail
 python3 -m http.server 8000
 # Note: the stock http.server module does not save POST bodies to disk.
 # For a receiving endpoint that actually writes the uploaded file, swap in
-# a small Flask/http.server subclass, or use `nc -lvnp 8000` and inspect
+# a small Flask/http.server subclass, or using netcat command for inspection 
+nc -lvnp 4445
 # the raw HTTP request manually.
