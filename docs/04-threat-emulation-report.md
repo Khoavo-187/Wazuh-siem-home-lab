@@ -641,6 +641,8 @@ Clear-EventLog -LogName Security
 
 ### Stage 11 — Exfiltration (T1059.001, T1567.002)
 
+> **Environment note:** the lab's Wazuh manager and attacker VMs crashed and are being rebuilt as of this writing. Everything below is the rule's intended design and the procedure that would exercise it — not a test result. No alert, screenshot, or log claims otherwise; the verdict stays `❌ Not evidenced` until a live re-test is possible.
+
 **Rule rewritten since the plan above was written.** `100413` no longer watches for a network connection on port 4445 — it now reads PowerShell's own Module Logging output for an `Invoke-WebRequest` call that names a remote `Uri` and either `-Method Post` or `-InFile` (see `docs/03` §3.3). The procedure below has been updated to match; the original `TCPClient`/port-4445 version is kept in `threat-emulation/attack-scripts/` history only as a reference for how `100404`/`100414` could still catch a *non-PowerShell-logged* transfer.
 
 ```bash
