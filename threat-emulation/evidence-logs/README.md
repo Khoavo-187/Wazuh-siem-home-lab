@@ -25,11 +25,13 @@ excerpt, rule mismatch) is recorded in the index below.
 | `stage05-rule-100407-recon-burst.json` | 5 — Discovery | `100407` | ✅ Verified (2026-10-13 re-test) — correlation fired correctly on 3 recon binaries within ~4.2s |
 | `stage06-suricata-eicar-download.json` | 6 — Payload Drop | `100306` | ✅ Verified |
 | `stage06-virustotal-malicious-detected.json` | 6 — Payload Drop | `87105` | ✅ Verified (earlier baseline run, same technique) |
-| `stage07-sysmon-registry-runkey.json` | 7 — Persistence | `92302` (built-in) | ⚠️ Custom rule `100406` not proven |
+| `stage07-sysmon-registry-runkey.json` | 7 — Persistence | `92302` (built-in) | ⚠️ Original run (2026-08-28) — custom rule not proven |
+| `stage07-sysmon-registry-custom-rule.json` | 7 — Persistence | `100406` | ✅ Verified (2026-10-13 re-test, child of `92302`); `rule.groups` shows the merged name `windowspersistence` (see docs/03 §5, item 16) |
 | `stage08-suricata-reverse-shell.json` | 8 — Command and Control | `100304` | ✅ Verified (rule rev 2) |
 | `stage08b-rule-100411-lsass-excerpt.json` | 8b — Credential Access | `100411` | ⚠️ Condensed excerpt, missing standard alert fields |
+| `stage08b-rule-100411-lsass-false-positive-windowsdefender.json` | 8b — Credential Access | `92900` (built-in) | ⚠️ Real raw alert, but a **false positive** from Windows Defender (`MsMpEng.exe`, `grantedAccess 0x101000`); `100411` correctly did not fire. Not a true positive |
 | `stage10-windows-1102-log-cleared.json` | 10 — Anti-Forensics | `63103` (built-in) | ⚠️ Custom rule `100412` not proven |
-| `stage10-rule-100412-excerpt.json` | 10 — Anti-Forensics | `100412` | ⚠️ Condensed excerpt, rule not matched by the real event |
+| `stage10-rule-100412-excerpt.json` | 10 — Anti-Forensics | `100412` | ✅ Verified (2026-10-13 re-test) — now a full raw alert (level 15, `firedtimes 2`) despite the file name; `rule.groups` shows the merged name `windowslog_cleared` |
 
 No raw log exists yet for **Stage 9** (File Lifecycle — screenshot only) or
 **Stage 11** (Exfiltration — not yet evidenced). See the Gap Analysis in
