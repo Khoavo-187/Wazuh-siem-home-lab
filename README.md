@@ -707,9 +707,6 @@ Wazuh-siem-home-lab/
 │       └── sysmon_config.xml
 │
 ├── network/
-│   ├── pfsense_config/
-│   │   └── config_backup.xml
-│   │
 │   └── Suricata_configuration/
 │       ├── local.rules
 │       └── suricata.yaml
