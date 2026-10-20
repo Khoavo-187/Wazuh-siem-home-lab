@@ -170,6 +170,9 @@ Required Window audit Policies:
 
 2. Sysmon is deployed to provide deep process visibility. The Wazuh Agent ingest the following key Sysmon Event IDs from the `Microsoft-Windows-Sysmon/operartional` channel:
     - Event ID 3(Network connect): Tracks outbound connections from suspicious processes (Used for C2 and exfiltration detection)
+    - Event ID 11(file create): Monitors executables dropped in sensitive data paths (e.g: \Temp\)
+    - Event ID 13(registry Event): Monitors persistence mechanism(e.g: \CurrentVersion\Run)
+    - Event ID 1(Process create): Captures process lineage (e.g:Powershell.exe,cmd.exe spawning net.exe) and command-line arguments(e.g: EncondedCommand)
     - Event ID 10(ProcessAccess): Records process-access activity according to the active Sysmon
 configuration.
 
@@ -179,9 +182,6 @@ not prove credential dumping.
 
 The source process, granted access rights, process lineage,
 and surrounding telemetry must be considered.
-    - Event ID 11(file create): Monitors executables dropped in sensitive data paths (e.g: \Temp\)
-    - Event ID 13(registry Event): Monitors persistence mechanism(e.g: \CurrentVersion\Run)
-    - Event ID 1(Process create): Captures process lineage (e.g:Powershell.exe,cmd.exe spawning net.exe) and command-line arguments(e.g: EncondedCommand) 
 
 ```json=
 {
