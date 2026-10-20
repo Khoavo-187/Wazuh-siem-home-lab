@@ -66,9 +66,13 @@ Attack / Suspicious Behavior
 
 # 🏗️ Current Lab Architecture
 
+-**The Windows 11 victim is the physical Windows host running VMware Workstation, not a separate virtual machine. Kali Linux, Wazuh and pfSense run as VMware virtual machines. The Windows host participates in the internal lab network through VMware Network Adapter VMnet1.**
+
 ## Tested Environment
 
 The majority of the current attack-chain testing was performed with the Kali attacker and Windows victim on the **same `192.168.60.0/24` LAN segment**.
+
+The Windows victim is the `physical VMware host`. Direct `Kali-to-Windows communication` occurs over VMnet1 without requiring pfSense to route the traffic.
 
 This means that the main attack traffic used in the current threat-emulation runs is **east-west traffic** and does **not necessarily traverse pfSense**.
 <img width="2136" height="1716" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/af62cab1-d2f0-4097-bf22-800a6f821334" />
@@ -164,7 +168,7 @@ Therefore, this repository currently distinguishes between:
 | **Wazuh Manager** | Central SIEM/XDR, rule engine, alert processing | `192.168.60.137` |
 | **Wazuh Indexer** | Alert indexing and search backend | `192.168.60.137` |
 | **Wazuh Dashboard** | Investigation and visualization | `192.168.60.137` |
-| **Windows 11** | Victim endpoint, Wazuh Agent, Sysmon, Suricata | `192.168.60.1` |
+| **Windows 11 Physical Host** | VMware host and victim endpoint; runs Wazuh Agent, Sysmon, Suricata and FIM | VMnet1: `192.168.60.1` |
 | **Kali Linux** | Attack / threat-emulation host | `192.168.60.135` |
 | **pfSense** | Firewall / gateway / network telemetry source | WAN `192.168.254.101`, LAN `192.168.60.254` |
 | **Suricata** | Network IDS | Windows endpoint + pfSense deployment |
