@@ -192,14 +192,6 @@ Run the following PowerShell command:
 ```powershell
 Get-NetAdapter |
     Select-Object Name, InterfaceDescription, Status, InterfaceGuid
-3. Enable JSON Logging for EVE output:
-```yaml
-outputs:
-	- eve-log:
-		enabled: yes
-		filetype: regular
-		filename: eve.json
-```
 3. Identify `Npcap`  interface:
 ```powershell
 .\suricata.exe --list-interfaces
