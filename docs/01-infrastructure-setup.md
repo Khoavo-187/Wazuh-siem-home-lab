@@ -31,7 +31,7 @@ The lab uses VMware VMs and includes the following components:
 | Component | Role |
 |---|---|
 | **Wazuh Server** | Runs the Wazuh manager, Indexer, and Dashboard. Collects & correlates logs from agents, Suricata, and pfSense |
-| **Windows 11 Endpoint** | Runs the Wazuh Agent (system monitoring + log forwarding); the victim (target) machine |
+| **Windows 11 Physical Host / Victim Endpoint** | The physical Windows machine running VMware Workstation. It also serves as the victim endpoint and runs Wazuh Agent, Sysmon, Suricata with Npcap, and File Integrity Monitoring (FIM). |
 | **Kali Linux (Attacker)** | Machine used to simulate attacks |
 | **pfSense Firewall** | Provides firewall logs, integrated into Wazuh via syslog |
 | **Suricata IDS/IPS** | Monitors network traffic, sends alerts to Wazuh based on custom rules |
@@ -75,13 +75,14 @@ Installation: https://documentation.wazuh.com/current/quickstart.html
 
 | Component | IP Address | Role |
 |---|---|---|
-| Suricata IDS | (runs on Windows or Kali) | Host-based network IDS + IPS on pfSense |
+| Suricata (Windows) | Windows Physical Host | Endpoint network IDS using Npcap to capture traffic on VMware VMnet1 |
+| Suricata (pfSense) | pfSense VM | Perimeter network monitoring; configuration maintained separately from the Windows Suricata configuration |
 | pfSense | 192.168.254.101 (WAN) / 192.168.60.254 (LAN) | Firewall/gateway (forwards logs via syslog) |
 | Kali Linux | 192.168.254.100 (WAN) / 192.168.60.135 (LAN) | Attacker machine |
 | Windows 11 | 192.168.60.1 | Wazuh agent (monitored endpoint) |
 | Wazuh Server | 192.168.60.137 | Central SIEM (manager + indexer + dashboard) |
 
-> ⚠️ **IP inconsistency note**: the source documents use `192.168.60.101` for the Windows11 endpoint in the baseline Detection Engineering section, but switch to `192.168.60.1` in the Full Attacking Chain section. The actual current IP of the Windows11 agent should be confirmed before reusing this report for a future test run.
+> ⚠️ **IP inconsistency note**: Historical baseline evidence may contain the address 192.168.60.101. The current Windows physical host/victim endpoint uses 192.168.60.1 on VMware VMnet1. Historical IP addresses are retained in older evidence for traceability.
 
 ---
 
@@ -175,9 +176,9 @@ Suricata requires Npcap to capture network traffic.
 1. Open Configuration: `C:\Program Files\Suricata\suricata.yaml`
 
 2. Define Network Interface. To view interfaces: `Get-NetAdapter | Select Name, Status`. Update `suricata.yaml`:
-```yaml
-af-packet:
-   - interface: Wi-fi
+```powershell
+Get-NetAdapter |
+    Select-Object Name, InterfaceDescription, Status, InterfaceGuid
 ```
 3. Enable JSON Logging for EVE output:
 ```yaml
@@ -189,7 +190,7 @@ outputs:
 ```
 **Running Suricata**
 In PowerShell (Admin):
-We are using the Host-only network from the VMware machine (VMnet1) so our interface is: \Device\NPF_{B030E396-B937-4B1A-ADC6-B02699BCBC95}
+We are using the Host-only network from the VMware machine (VMnet1) so our interface is: \Device\NPF_{B030E396-B937-4B1A-ADC6-B02699BCBC95} for investigation and capturing packets from kali linux attacker
 
 ```powershell
 cd "C:\Program Files\Suricata\"
@@ -220,8 +221,7 @@ Restart-Service -Name wazuh
 |---|---:|---:|---|
 | Wazuh Server | 4 | 8 GB | NAT + Host-only |
 | pfSense | 2 | 2 GB | NAT + Host-only |
-| Kali Linux | 2 | 4 GB | Host-only |
-| Windows 11 | 4 | 8 GB | Host-only |
+| Kali Linux | 2 | 4 GB | Host-only; optional WAN adapter for perimeter testing |
 
 5. Connectivity Validation
 
@@ -240,6 +240,14 @@ ping <WINDOWS-IP>
 ```
 
 6. Data Flow Validation
+**physical Host**
+- The physical Windows 11 machine serves two roles:
+
+1. VMware Workstation virtualization host.
+2. Windows victim endpoint.
+
+- It runs Wazuh Agent, Sysmon, Suricata and FIM directly on the host operating system.
+
 **Windows Endpoint**
 `Windows Event Logs / Sysmon → Wazuh Agent → Wazuh Server → Wazuh Indexer → Wazuh Dashboard`
 
