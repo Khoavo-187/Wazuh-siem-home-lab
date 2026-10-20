@@ -176,12 +176,12 @@ Required Window audit Policies:
     - Event ID 10(ProcessAccess): Records process-access activity according to the active Sysmon
 configuration.
 
-Access to sensitive processes such as lsass.exe may support
-credential-access investigations, but the event alone does
-not prove credential dumping.
-
-The source process, granted access rights, process lineage,
-and surrounding telemetry must be considered.
+    Access to sensitive processes such as lsass.exe may support
+    credential-access investigations, but the event alone does
+    not prove credential dumping.
+    
+    The source process, granted access rights, process lineage,
+    and surrounding telemetry must be considered.
 
 ```json=
 {
