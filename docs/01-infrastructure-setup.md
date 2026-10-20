@@ -26,6 +26,16 @@ breaks: true
 
 ## 1. Lab Architecture
 
+### Physical Host and Victim Deployment
+**physical Host**
+- The physical Windows 11 machine serves two roles:
+
+1. VMware Workstation virtualization host.
+2. Windows victim endpoint.
+
+- It runs Wazuh Agent, Sysmon, Suricata and FIM directly on the host operating system.
+
+
 The lab uses VMware VMs and includes the following components: 
 
 | Component | Role |
@@ -175,11 +185,13 @@ Suricata requires Npcap to capture network traffic.
 
 1. Open Configuration: `C:\Program Files\Suricata\suricata.yaml`
 
-2. Define Network Interface. To view interfaces: `Get-NetAdapter | Select Name, Status`. Update `suricata.yaml`:
+2. Identify the VMware VMnet1 network interface on the Windows physical host.
+
+Run the following PowerShell command:
+
 ```powershell
 Get-NetAdapter |
     Select-Object Name, InterfaceDescription, Status, InterfaceGuid
-```
 3. Enable JSON Logging for EVE output:
 ```yaml
 outputs:
@@ -187,6 +199,12 @@ outputs:
 		enabled: yes
 		filetype: regular
 		filename: eve.json
+```
+3. Identify `Npcap`  interface:
+```powershell
+.\suricata.exe --list-interfaces
+# and
+.\suricata.exe -T -c suricata.yaml
 ```
 **Running Suricata**
 In PowerShell (Admin):
@@ -240,14 +258,6 @@ ping <WINDOWS-IP>
 ```
 
 6. Data Flow Validation
-**physical Host**
-- The physical Windows 11 machine serves two roles:
-
-1. VMware Workstation virtualization host.
-2. Windows victim endpoint.
-
-- It runs Wazuh Agent, Sysmon, Suricata and FIM directly on the host operating system.
-
 **Windows Endpoint**
 `Windows Event Logs / Sysmon → Wazuh Agent → Wazuh Server → Wazuh Indexer → Wazuh Dashboard`
 
