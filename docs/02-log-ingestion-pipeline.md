@@ -260,7 +260,15 @@ result in the recorded lab evidence.
   "location": "virustotal"
 }
 ```
+- VirusTotal returns file reputation and detection information.
 
+- In the recorded example, `positives: 62` and `total: 66`
+indicate that 62 of the 66 engines represented in the
+integration result detected the test file.
+
+- These values describe the recorded detection result;
+they should not be interpreted as a universal
+reputation score.
 :::spoiler
 Note: location shows virustotal, indicating this alert was generated internally by the Wazuh manager's API intergration , not directly from the endpoint file
 :::
