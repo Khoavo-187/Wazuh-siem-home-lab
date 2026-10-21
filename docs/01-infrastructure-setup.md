@@ -1,266 +1,144 @@
----
-title: "SOC Home Lab — Lab architecture and summary"
-tags: [Blue Team, SOC Home Lab, Lab setup]
-lang: en
-breaks: true
----
+# 01 — Lab Architecture and Setup
 
-# SOC Home Lab — Lab structure and setup infrastructure
+> [!NOTE]
+> This document describes how the lab is built and how every telemetry source reaches Wazuh. Detection logic is in [`03`](03-Detection-engineering.md); test results are in [`04`](04-threat-emulation-report.md). Configuration files referenced here live in `endpoints/`, `network/` and `siem-wazuh/`.
 
-[TOC]
+## 0. Summary
 
----
+**Objective.** Build a small SOC lab with Wazuh (SIEM/XDR), Suricata (network IDS), pfSense (firewall/gateway) and Sysmon, then practise detection engineering: write custom decoders and rules, emulate attacks mapped to MITRE ATT&CK, and validate every rule against raw alert evidence.
 
-## 0. Executive Summary
+**Scope.**
+- pfSense `filterlog` decoder and rules, Suricata local rules, Sysmon / Windows Event Log rules, FIM and VirusTotal enrichment.
+- A 12-stage attack chain (Reconnaissance → Exfiltration) run from Kali against the Windows endpoint.
+- Correlation rules: brute force followed by a successful logon, LSASS access, log clearing.
 
-**Lab objective:** Build a SOC home Lab using Wazuh (SIEM/XDR), Suricata (IDS/IPS), and pfSense (firewall/gateway) to practice detection engineering - writing custom decoders/rules, simulating attacks mapped to MITRE ATT&CK, and validating rules against real log evidence.
+**Status.** Most detections are confirmed by raw alerts; the per-stage result, the open gaps and the re-test plan are maintained in `docs/04` (§6 and §7) so this page does not repeat them. Suricata runs in **IDS mode only** (every rule is `alert`; nothing is dropped or blocked).
 
-**Scope:**
-- Baseline detection engineering: pfSense filterlog decoder, Suricata local rules, Sysmon/Windows Event Log mapping, VirusTotal threat intel integration.
-- Full 12-stage attack simulation: Reconnaissance → Brute Force → Initial Access → Execution → Discovery → Payload Drop → Persistence → C2 → Credential Access → File Lifecycle → Cleanup/Anti-forensics → Exfiltration.
-- Advanced correlation rules: linking brute force + successful login, LSASS access, log clearing.
-
-**Overall status:** Most detections are confirmed by real log evidence. Several correlation-level rules (`100410`, `100411`, `100412`) and the exfiltration rule (`100413`) are still at the design stage / not fully verified with raw alerts — see Section 9.
-
----
-
-## 1. Lab Architecture
-
-### Physical Host and Victim Deployment
-**physical Host**
-- The physical Windows 11 machine serves two roles:
-
-1. VMware Workstation virtualization host.
-2. Windows victim endpoint.
-
-- It runs Wazuh Agent, Sysmon, Suricata and FIM directly on the host operating system.
-
-
-The lab uses VMware VMs and includes the following components: 
-
-| Component | Role |
-|---|---|
-| **Wazuh Server** | Runs the Wazuh manager, Indexer, and Dashboard. Collects & correlates logs from agents, Suricata, and pfSense |
-| **Windows 11 Physical Host / Victim Endpoint** | The physical Windows machine running VMware Workstation. It also serves as the victim endpoint and runs Wazuh Agent, Sysmon, Suricata with Npcap, and File Integrity Monitoring (FIM). |
-| **Kali Linux (Attacker)** | Machine used to simulate attacks |
-| **pfSense Firewall** | Provides firewall logs, integrated into Wazuh via syslog |
-| **Suricata IDS/IPS** | Monitors network traffic, sends alerts to Wazuh based on custom rules |
+## 1. Architecture
 
 ![SOC home lab architecture](../architecture/Architecture-and-data-flow.png)
 
-### Wazuh Architecture
-- **Wazuh Agent**: a lightweight program installed on each monitored device (Linux/Windows/macOS), collects security data and forwards it to the Wazuh Server.
-- **Wazuh Server**: receives the data, decodes and analyzes it against rules, generates alerts, and forwards them to the **Wazuh Indexer**.
-- **Wazuh Indexer**: a search/analytics engine (built on Elasticsearch/OpenSearch) that indexes data for fast querying.
-- **Wazuh Dashboard**: a web interface (built on Kibana) — real-time monitoring, compliance tracking, and investigation.
-
-Installation: https://documentation.wazuh.com/current/quickstart.html
-
-### Wazuh Server Setup Configuration 
-- **Network Mode:** NAT + Host-only (NAT for internet updates, Host-only for internal LAN communication).
-- **Host Platform:** VMware
-- **Target Agent OS:** Windows
-
-### Wazuh Agent Setup Configuration
-**Step 1:** Platform support
-- Windows
-- Linux
-- macOS
-
-**Step 2:** Deploying new Agent
-- Visit the official Wazuh download page: https://documentation.wazuh.com/current/installation-guide/wazuh-agent/wazuh-agent-package-windows.html
-- Download the Windows `.msi` installer for the Wazuh agent.
-- Run the installer to begin the installation process.
-
-**Step 3:** Agent settings configuration
-- Navigate to the Endpoints tab.
-- Click on **Deploy new agent**.
-- Enter the Server Address — the IP address of your Wazuh Manager (`192.168.60.137`).
-- Specify a unique Agent Name (e.g., `PC1`).
-- Wazuh will generate registration commands. These commands must be executed in PowerShell to link the agent with the manager.
-- Open Windows PowerShell as Administrator.
-- Paste and execute the provided commands.
-
-### IP / Role Table
-
-| Component | IP Address | Role |
+| Component | Role | Network |
 |---|---|---|
-| Suricata (Windows) | Windows Physical Host | Endpoint network IDS using Npcap to capture traffic on VMware VMnet1 |
-| Suricata (pfSense) | pfSense VM | Perimeter network monitoring; configuration maintained separately from the Windows Suricata configuration |
-| pfSense | 192.168.254.101 (WAN) / 192.168.60.254 (LAN) | Firewall/gateway (forwards logs via syslog) |
-| Kali Linux | 192.168.254.100 (WAN) / 192.168.60.135 (LAN) | Attacker machine |
-| Windows 11 | 192.168.60.1 | Wazuh agent (monitored endpoint) |
-| Wazuh Server | 192.168.60.137 | Central SIEM (manager + indexer + dashboard) |
+| **Wazuh server** (VM) | Manager, Indexer and Dashboard in one VM; receives agent data and pfSense syslog | NAT + host-only, `192.168.60.137` |
+| **Windows 11 endpoint** | Victim. Runs the Wazuh agent, Sysmon, Suricata (Npcap) and FIM. Computer name `LAPTOP-VF92GC15`, agent name `window11Host` | VMnet1 (host-only), `192.168.60.1` |
+| **Kali Linux** (VM) | Attacker | Host-only `192.168.60.135`; second adapter `192.168.254.100` on the pfSense WAN-side network, used only for the WAN-side test |
+| **pfSense** (VM) | Firewall/gateway; forwards firewall logs to Wazuh by syslog | WAN (`em0`) `192.168.254.101/24`, gateway `192.168.254.1`; LAN (`em1`) `192.168.60.254/24` |
 
-> ⚠️ **IP inconsistency note**: Historical baseline evidence may contain the address 192.168.60.101. The current Windows physical host/victim endpoint uses 192.168.60.1 on VMware VMnet1. Historical IP addresses are retained in older evidence for traceability.
+<!-- CONFIRM BEFORE PUBLISHING: the endpoint's name, its address (.1 is the VMware host's default VMnet1 address) and the Suricata capture on the VMnet1 adapter suggest it may be the physical VMware host rather than a VM. State which it is, and if it is the host, say how the lab is isolated and snapshotted. -->
 
----
+**Network facts used throughout the docs**
+- Kali, pfSense (LAN), the Windows endpoint and the Wazuh server share one `/24`, `192.168.60.0/24`, on VMware VMnet1. Kali → Windows traffic is therefore **east-west on the same segment and does not cross pfSense**. pfSense only logs traffic that actually crosses it.
+- pfSense DHCP serves `.100`–`.199`; Kali (`.135`) and Wazuh (`.137`) are inside that range, the Windows endpoint (`.1`) is outside it.
+- Firewall rules in the committed backup: LAN "allow all", WAN "pass ICMP", a LAN ICMP-block test rule (disabled), automatic outbound NAT. **No inbound port-forward is configured**, so a WAN-side test exercises pfSense's default-deny logging, not forwarding to the endpoint.
+- Early baseline captures (August 2026) show a LAN host at `192.168.60.101` (inside the DHCP range). All attack-chain tests use the endpoint at `192.168.60.1`; sample logs in `docs/03` that mention `.101` come from the baseline period.
 
-## 2. pfSense Firewall Configuration
+### Versions
 
-**Step 1: Requirements**
-1. Virtual Machine Software → VMware Workstation Pro (used in this guide, but VirtualBox also works).
-2. pfSense ISO → Download the latest version from the official pfSense website.
-3. Wazuh Manager → Running and accessible in your lab environment.
+| Item | Version | Notes |
+|---|---|---|
+| Wazuh | 4.x (index pattern `wazuh-alerts-4.x-*`) | Record the exact build: `/var/ossec/bin/wazuh-control info`. Rule IDs of built-in rules referenced in `docs/03` (`60002`, `60106`, `92302`, `92657`…) depend on it |
+| Suricata | 8.0.6 (from `suricata.yaml`) | Windows MSI, Npcap capture |
+| Sysmon | schema 4.50, SwiftOnSecurity config v74 | Record the binary version from the `sysmon64.exe` banner |
+| pfSense | config version 24.0 | From `config_backup.xml` |
 
-**Step 2: Creating a Virtual Machine for pfSense**
-1. Open VMware → Navigate to File → New Virtual Machine.
-2. Select the Installation Media → Choose Installer disc image file (ISO) and browse for the downloaded pfSense ISO.
-3. Name Your VM → Use a descriptive name such as `pfSense` and pick a save location.
-4. Allocate Disk Space → 20 GB minimum (store as a single file recommended).
-5. Customize Hardware:
-   - RAM: 1GB minimum (2 GB recommended).
-   - CPU: 1 vCPU (2 cores recommended).
-   - Network Adapters: 
-     - Adapter 1 (WAN) → NAT (simulates internet access).
-     - Adapter 2 (LAN) → Host-only (isolated internal lab network).
-6. Assign Interfaces:
-   - WAN (em0) → Configured via DHCP (IP in `192.168.254.101/24` range).
-   - LAN (em1) → Static IP `192.168.60.254/24`.
+Wazuh components, for reference: the **agent** collects and forwards data; the **manager** decodes events and applies rules; the **Indexer** (OpenSearch) stores alerts; the **Dashboard** (OpenSearch Dashboards) is the investigation UI. Installation guide: <https://documentation.wazuh.com/current/quickstart.html>.
 
-**Step 3: Accessing the pfSense Web Interface**
-1. Open a browser from a VM (e.g., Kali Linux) connected to the LAN network.
-2. Go to: `https://192.168.60.254/`
-3. Log in with default credentials:
-   - Username: `admin`
-   - Password: `pfsense`
+## 2. VM resources
 
-**Step 4: Why Combine pfSense with Wazuh?**
-- pfSense acts as the network security gateway, generating logs on traffic, connections, and blocked events.
-- Wazuh functions as the Security Information and Event Management (SIEM) platform, collecting and analyzing logs to detect suspicious activity.
-==> Together, they form a mini SOC environment, where firewall events are monitored and correlated with endpoint activity.
+| VM | vCPU | RAM | Network |
+|---|---:|---:|---|
+| Wazuh server | 4 | 8 GB | NAT + host-only |
+| pfSense | 2 | 2 GB | NAT (WAN) + host-only (LAN) |
+| Kali Linux | 2 | 4 GB | Host-only + WAN-side adapter |
 
-**Step 5: Configuring pfSense Logs in Wazuh**
-1. Enable Remote Logging in pfSense:
-   - Go to Status → System Logs → Settings.
-   - Check **Enable Remote Logging**.
-   - Add your Wazuh server's IP (`192.168.60.137`) under Remote Syslog Servers.
-   - Set Port to `514` (default syslog).
-   - Select log categories to forward: System, Firewall, VPN, DHCP, DNS.
-2. Configure Wazuh Server to receive Syslog:
-   - On the Wazuh Server, open `/var/ossec/etc/ossec.conf`.
-   - Add the following `<remote>` block to listen for pfSense logs:
-     ```xml
-     <remote>
-       <connection>syslog</connection>
-       <port>514</port>
-       <protocol>udp</protocol>
-       <allowed-ips>192.168.60.254</allowed-ips>
-     </remote>
-     ```
-   - Restart the Wazuh Manager to apply changes:
-     ```bash
-     sudo systemctl restart wazuh-manager
-     ```
+The Windows endpoint is attached to VMnet1 (see the note in §1).
 
----
+## 3. pfSense
 
-## 3. Suricata IDS Configuration
+1. Create a VM (20 GB disk, 2 GB RAM, 2 vCPU). Adapter 1 → NAT (WAN, `em0`), adapter 2 → host-only (LAN, `em1`).
+2. Assign `em0` = WAN `192.168.254.101/24` with gateway `192.168.254.1` (static in the committed backup) and `em1` = LAN `192.168.60.254/24`.
+3. Open `https://192.168.60.254/` from a LAN host and sign in. **Change the default `admin` / `pfsense` password immediately.**
+4. Remote logging: *Status → System Logs → Settings* → enable remote logging, server `192.168.60.137:514`, everything (config key `logall`), RFC 3164.
+5. On the Wazuh manager add a syslog listener to `/var/ossec/etc/ossec.conf` and restart:
 
-**IDS vs IPS Overview**
-1. **IDS (Intrusion Detection System):**
-   - Detects threats by inspecting traffic using signatures, IoCs, or Lua scripting.
-   - Generates alerts and logs but does not block traffic.
-2. **IPS (Intrusion Prevention System):**
-   - Takes proactive action by dropping or allowing traffic based on inspection results.
-
-**Download and Install**
-1. Visit: https://suricata.io/download/
-2. Download the Windows installer (`.msi`).
-3. Run the installer with default settings.
-   - Suricata installs to: `C:\Program Files\Suricata\`
-   - Contents include: `suricata.exe`, `suricata.yaml`, `rules\`, `log\`.
-
-**Install and Verify Npcap**
-Suricata requires Npcap to capture network traffic.
-1. Download from https://npcap.com/#download.
-2. During installation: Enable WinPcap API-compatible mode & Enable startup at boot.
-3. Verify that Npcap is running via PowerShell:
-   ```powershell
-   Get-Service -Name npcap
-   ```
-   If not running: `Start-Service -Name npcap`
-
-**Configure Suricata**
-
-1. Open Configuration: `C:\Program Files\Suricata\suricata.yaml`
-
-2. Identify the VMware VMnet1 network interface on the Windows physical host.
-
-Run the following PowerShell command:
-
-```powershell
-Get-NetAdapter |
-    Select-Object Name, InterfaceDescription, Status, InterfaceGuid
-3. Identify `Npcap`  interface:
-```powershell
-.\suricata.exe --list-interfaces
-# and
-.\suricata.exe -T -c suricata.yaml
+```xml
+<remote>
+  <connection>syslog</connection>
+  <port>514</port>
+  <protocol>udp</protocol>
+  <allowed-ips>192.168.60.254</allowed-ips>
+</remote>
 ```
-**Running Suricata**
-In PowerShell (Admin):
-We are using the Host-only network from the VMware machine (VMnet1) so our interface is: \Device\NPF_{B030E396-B937-4B1A-ADC6-B02699BCBC95} for investigation and capturing packets from kali linux attacker
+
+```bash
+sudo systemctl restart wazuh-manager
+```
+
+A second Suricata instance on pfSense is mentioned in `docs/03`, but no configuration or evidence from it is committed; everything validated in `docs/04` comes from the endpoint instance.
+
+## 4. Suricata on the endpoint
+
+1. Install the Windows MSI from <https://suricata.io/download/> (default path `C:\Program Files\Suricata\`) and Npcap with *WinPcap API-compatible mode*; check with `Get-Service npcap`.
+2. Use the committed `network/Suricata_configuration/suricata.yaml` and `local.rules`. It already defines `HOME_NET`, enables `eve-log` to `eve.json` and loads the rule files; no further edit is needed. The `af-packet:` section is Linux-only and unused on Windows.
+3. Start Suricata from an elevated PowerShell, passing the VMnet1 adapter on the command line (the GUID is machine-specific; list adapters with `Get-NetAdapter`):
 
 ```powershell
 cd "C:\Program Files\Suricata\"
 .\suricata.exe -c suricata.yaml -i "\Device\NPF_{B030E396-B937-4B1A-ADC6-B02699BCBC95}"
 ```
-Important log files in C:\Program Files\Suricata\log\: `eve.json (JSON alerts)`, `fast.log`, `stats.log`.
 
-**Integrate Suricata with Wazuh Agent**
-To send Suricata alerts to the Wazuh Server, configure the local agent to read `eve.json`.
+Output files in `C:\Program Files\Suricata\log\`: `eve.json`, `fast.log`, `stats.log`.
 
-1. Open the Wazuh Agent configuration on the Windows endpoint: `C:\Program Files (x86)\ossec-agent\ossec.conf`
+`HOME_NET` is `[192.168.60.0/24, !192.168.60.135]`: Kali is deliberately outside it so that inbound rules fire on Kali as an external source (explained in `docs/03` §2.1).
 
-2. Add the following block:
+## 5. Windows endpoint
 
-```xml
-<localfile>
-  <log_format>json</log_format>
-  <location>C:\Program Files\Suricata\log\eve.json</location>
-</localfile>
-```
-3. Restart the Wazuh Agent service in PowerShell (Admin):
-```powershell
-Restart-Service -Name wazuh
-```
-4. VMware Virtual Machine Resources
+**Wazuh agent.** Install the MSI, enrol against `192.168.60.137`, then replace `C:\Program Files (x86)\ossec-agent\ossec.conf` with `endpoints/windows-11/ossec.conf` and restart (`Restart-Service -Name wazuh`). That file collects: `Security` (noisy event IDs excluded), `System`, `Application`, `Microsoft-Windows-OpenSSH/Operational`, `Microsoft-Windows-Sysmon/Operational`, the Suricata `eve.json`, and FIM on `C:\Users\LENOVO\Downloads\virustotaltest` and `C:\Users\LENOVO\tmp`. **The PowerShell Operational channel is not collected.**
 
-| VM | vCPU | RAM | Network |
-|---|---:|---:|---|
-| Wazuh Server | 4 | 8 GB | NAT + Host-only |
-| pfSense | 2 | 2 GB | NAT + Host-only |
-| Kali Linux | 2 | 4 GB | Host-only; optional WAN adapter for perimeter testing |
-
-5. Connectivity Validation
-
-Verify connectivity between the lab components before configuring detection rules.
-
-From Windows:
+**Sysmon.** Install with the committed configuration (`endpoints/windows-11/sysmon_config.xml`, SwiftOnSecurity v74 plus a `ProcessAccess` filter on `lsass.exe`):
 
 ```powershell
-ping 192.168.60.137
+sysmon64.exe -accepteula -i sysmon_config.xml    # first install
+sysmon64.exe -c sysmon_config.xml                # update after editing
 ```
-From kali
+
+**Audit policy** (run elevated):
+
 ```powershell
-ping 192.168.60.254
-ping 192.168.60.137
-ping <WINDOWS-IP>
+auditpol /set /subcategory:"Logon" /success:enable /failure:enable
+auditpol /set /subcategory:"Process Creation" /success:enable
+reg add HKLM\Software\Microsoft\Windows\CurrentVersion\Policies\System\Audit /v ProcessCreationIncludeCmdLine_Enabled /t REG_DWORD /d 1 /f
 ```
 
-6. Data Flow Validation
-**Windows Endpoint**
-`Windows Event Logs / Sysmon → Wazuh Agent → Wazuh Server → Wazuh Indexer → Wazuh Dashboard`
+## 6. Wazuh manager
 
-**Network Traffic**
-`Network Traffic → Suricata → eve.json → Wazuh Agent → Wazuh Server → Wazuh Dashboard`
+1. Copy `siem-wazuh/custom-decoder/local_decoder.xml` to `/var/ossec/etc/decoders/` and the three files in `siem-wazuh/custom-rules/` to `/var/ossec/etc/rules/`.
+2. Add the VirusTotal integration (block in `endpoints/manager/m_ossec.conf`, with your own API key; restrict it to `syscheck` alerts).
+3. Validate and restart:
 
-**Firewall Logs**
-`pfSense → Syslog (UDP/514) → Wazuh Server → Wazuh Dashboard`
+```bash
+sudo /var/ossec/bin/wazuh-analysisd -t
+sudo systemctl restart wazuh-manager
+```
 
-**Agent Connectivity Validation**
-Verify the Wazuh agent status from:
-`Wazuh Dashboard → Agents management → Summary`
+`endpoints/manager/m_ossec.conf` currently contains placeholders (`...`) for most sections; replace it with a sanitised copy of the real file so that the syslog listener and rule loading described above can be checked.
 
-The Windows endpoint should appear as Active after successful agent enrollment and connectivity.
+## 7. Validation
+
+```powershell
+ping 192.168.60.137          # from Windows
+```
+```bash
+ping 192.168.60.254 && ping 192.168.60.137 && ping 192.168.60.1    # from Kali
+```
+
+| Flow | Path |
+|---|---|
+| Endpoint | Event Log / Sysmon → agent → manager → Indexer → Dashboard |
+| Network IDS | Suricata → `eve.json` → agent → manager → Indexer → Dashboard |
+| Firewall | pfSense → syslog UDP/514 → manager → Indexer → Dashboard |
+
+The agent should show **Active** in *Agents management → Summary*.
+
+**Exporting evidence.** Copy alerts from `/var/ossec/logs/alerts/alerts.json` on the manager (or the Dashboard's document view) and always record which one was used: the Dashboard and the Discover view escape backslashes differently, which matters when a rule matches Windows paths.
