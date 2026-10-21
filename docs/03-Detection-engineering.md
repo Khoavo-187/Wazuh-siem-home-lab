@@ -376,7 +376,7 @@ A Wazuh rule can only fire if the event exists. The Sysmon configuration is [`sy
 | Event | Used by | What `sysmon_config.xml` does | Effect on the rules |
 |---|---|---|---|
 | **1** ProcessCreate | `100400`–`100403`, `100407` | `onmatch="exclude"`: everything is logged except the listed noise | Covered |
-| **3** NetworkConnect | `100404`, `100413`, `100414` | Include list: specific images (`powershell.exe`, `cmd.exe`, `certutil.exe`, `bitsadmin.exe`, `nc.exe`, …), any binary under `C:\Users`, `C:\ProgramData`, `C:\Windows\Temp`, and a port list (22, 3389, 4444, 5900, …). Excludes Defender, Teams, `*.microsoft.com`, loopback | `100404` and `100414` are covered because PowerShell / cmd / certutil are included. `100413` (port 4445) is logged only when the process matches the include list — port 4445 itself is **not** in the list |
+| **3** NetworkConnect | `100404`, `100413`, `100414` | Include list: specific images (`powershell.exe`, `cmd.exe`, `certutil.exe`, `bitsadmin.exe`, `nc.exe`, …), any binary under `C:\Users`, `C:\ProgramData`, `C:\Windows\Temp`, and a port list (22, 3389, 4444, 5900, …). Excludes Defender, Teams, `*.microsoft.com`, loopback | `100404` and `100414` are covered because PowerShell / cmd / certutil are included. `100413` is active and record base on extract data rule detection with all port list |
 | **10** ProcessAccess | `100411`, `100416` | `include` filter on `\lsass.exe` (fixed — was empty) | Covered, and now confirmed live by a false-positive test (see §3.3, `100411`) |
 | **11** FileCreate | `100405` | Include by extension and folder (`.exe`, `.dll`, `.ps1`, `.bat`, `\Downloads\`, `\Startup\`, …); no generic `\Temp\` or `\AppData\Roaming\` filter | The rule only sees files already selected by extension/folder, so in practice it flags **executables and scripts** written to Temp or Roaming |
 | **13** RegistryEvent | `100406` | Includes `CurrentVersion\Run` (covers `Run`, `RunOnce`, …) | Covered |
@@ -404,11 +404,11 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100406` | 10 | Child of built-in `92302`, key `…\CurrentVersion\Run` or `RunOnce` | none | T1547.001 |
 | `100407` | 12 | Rule `100402` | ≥3 / 120s, `same_field` user | T1087 |
 | `100408` | 10 | Rule `60122` (event 4625) with `ipAddress` ≠ `-` | ≥5 / 60s, `same_field` `ipAddress`, `ignore 120` | T1110 |
-| `100410` | 13 | Logon success `4624` (`60106`) after `100408` | `frequency=2` / 200s in the live XML (intended 1 — see §5 item 5), `same_field` `ipAddress` | T1110, T1078 |
+| `100410` | 13 | Logon success `4624` (`92657`) after `100408` | `frequency=1` / 200s in the live XML (intended 1 — see §5 item 5), `same_field` `ipAddress` | T1110, T1078 |
 | `100411` | 14 | EID 10, `targetImage` ends with `lsass.exe`, `sourceImage` not in the full-path allow-list, `grantedAccess` in a memory-read mask list | none | T1003.001 |
 | `100416` | 15 | Child of `100411`, `callTrace` contains `dbghelp.dll`/`dbgcore.dll` or `UNKNOWN` | none | T1003.001 |
 | `100412` | 15 | Child of built-in `60002` (Security-channel base), `eventID = 1102` | none | T1070.001 |
-| `100413` | 9 | Child of built-in `60009`; event with PowerShell module-logging fields (`contextInfo` containing `Invoke-WebRequest`, plus `payload`) — **needs a channel the agent does not collect** | none | T1059.001, T1567.002 |
+| `100413` | 9 | Child of built-in `60009`; event with PowerShell module-logging fields (`contextInfo` containing `Invoke-WebRequest`, plus `payload`) — **needs a channel and the file `ossec.conf` is configured for collect logs for powershell command (but it not yet test)** | none | T1059.001, T1567.002 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
 #### `100400` — Shell spawned child process (level 5)
@@ -456,11 +456,100 @@ Correlation on `100402`: ≥3 recon binaries from the same `win.eventdata.user` 
 #### `100408` — Failed logon burst (level 10)
 Correlation on rule `60122` (failed logon, event 4625): ≥5 failures from the same `ipAddress` within 60s. Entries with `ipAddress` equal to `-` (local logons without a source address) are excluded by a negated field match. Mapped to T1110. It fits network logons (RDP, SMB, OpenSSH for Windows).
 
-#### `100410` — Successful logon after a failed-logon burst (level 13)
-Fires when a **4624** (`60106`) arrives from an `ipAddress` that previously triggered `100408`. This ordering — many failures followed by a success — is the classic pattern of a guessed password (T1110 → T1078). An earlier fix added explicit `frequency`/`timeframe` (previously relied on Wazuh's implicit default window) — **but `frequency` is currently `2`, not `1`** (`frequency="2" timeframe="200"`). With `if_matched_sid`, `frequency` sets how many times `100408` must have matched in the window, so this now requires **two** separate brute-force-burst alerts within 200 seconds before `100410` can fire at all — a single burst-then-login sequence (the only kind tested so far) will not reach it, independent of the precedence issue below. If a single burst is the intended trigger, revert to `frequency="1"`.
+#### `100410` — Successful Logon After a Failed-Logon Burst (Level 13)
 
-**Second built-in competitor, found 2026-10-10.** A re-test of Stages 2–3 (fresh evidence, correct `ipAddress`) produced a real `100408` alert followed by a real `4624` — but the alert that appeared was Wazuh's built-in `92657` ("Successful Remote Logon Detected... possible pass-the-hash attack"), not `100410`. `92657` is almost certainly another child of `60106` (same parent as `100410`'s current `if_sid`), so this is the same sibling-precedence pattern as `100406` vs `92302`. **Not yet fixed in the rule file** (confirmed against the current `sysmon_rules.xml`: `100410` still uses `<if_sid>60106</if_sid>`). The same remedy applies: chain `100410` under `92657` instead of `60106` — `<if_sid>92657</if_sid>`, keeping `<if_matched_sid>100408</if_matched_sid>` — so it only evaluates once `92657` has matched. The trade-off: the rule then only covers logons that `92657` itself matches (NTLM network logons); an SSH (`logonType 8`) or Kerberos logon would not reach it. This is the one precedence case left unresolved; the equivalent fix for `100406` (→`92302`) and `100412` (→`60002`) has already been applied and confirmed working (see those entries, and `docs/04` Stages 7 and 10). Caveat: `92657`'s own description talks about RDP and pass-the-hash, and its MITRE tags include T1021.001 (RDP) — this is built-in boilerplate for any NTLM network logon (type 3). The real access in this test was **SMB** (`smbclient`, after Hydra brute-forced the SMB service), not RDP and not SSH — the real technique is T1021.002 (SMB/Windows Admin Shares). Don't read the built-in wording or its MITRE tags as a confirmed RDP/PtH finding. See `docs/04`, Stage 3, for the raw evidence.
+**Detection objective.**
 
+Rule `100410` is designed to identify a successful Windows authentication event (Event ID `4624`) following a previously detected burst of failed authentication attempts from the same source IP address.
+
+This sequence may indicate that an attacker successfully authenticated after repeated password-guessing attempts.
+
+The detection is mapped to MITRE ATT&CK techniques:
+
+- **T1110 — Brute Force**
+- **T1078 — Valid Accounts**
+
+**Detection logic.**
+
+The intended correlation sequence is:
+
+```text
+Multiple Failed Logons (Event ID 4625)
+                   |
+                   v
+       Wazuh Rule 100408
+       Brute-force Detection
+                   |
+                   v
+     Successful Logon (4624)
+                   |
+                   v
+      Built-in Rule 92657
+                   |
+                   v
+           Rule 100410
+    Success After Brute Force
+```
+
+The current rule configuration uses:
+
+- `<if_sid>92657</if_sid>` — evaluates successful authentication events classified by Wazuh's built-in rule `92657`.
+- `<if_matched_sid>100408</if_matched_sid>` — references a previously matched brute-force detection.
+- `frequency="1"` and `timeframe="200"` — configured correlation parameters, requiring validation against the installed Wazuh version.
+- `<same_field>win.eventdata.ipAddress</same_field>` — intended to correlate authentication events originating from the same source IP address.
+- `win.system.eventID = 4624` — restricts the current event to successful Windows logons.
+
+**Previous issue and configuration changes.**
+
+During the October 10, 2026 retest, rule `100408` successfully detected repeated failed authentication attempts. A subsequent Event ID `4624` was also observed, but Wazuh generated the built-in alert `92657` instead of the expected custom alert `100410`.
+
+The earlier configuration used:
+
+```xml
+<if_sid>60106</if_sid>
+```
+
+This raised a possible rule-chain interaction with the built-in authentication detection.
+
+The configuration was subsequently changed to:
+
+```xml
+<if_sid>92657</if_sid>
+<if_matched_sid>100408</if_matched_sid>
+```
+
+The correlation parameters were also updated to:
+
+```xml
+frequency="1" timeframe="200"
+```
+
+These changes align the custom rule with the built-in alert observed during the SMB authentication test.
+
+**Detection limitations.**
+
+1. The current rule depends on built-in rule `92657`. Authentication events that do not match this parent rule may not reach `100410`.
+
+2. Matching the source IP address does not necessarily establish that the same user account was involved in both the failed and successful authentication events.
+
+3. The relationship between the historical `100408` alert and the subsequent successful logon must be validated to ensure that the correlation behaves as intended.
+
+4. A successful authentication following failed attempts is suspicious but does not independently prove that credentials were compromised.
+
+**Validation status — Pending Retest.**
+
+The configuration has been updated, but successful execution of rule `100410` has not yet been confirmed by a new raw alert produced after these changes.
+
+The October 10, 2026 evidence confirms:
+
+- Rule `100408` detected repeated failed logons.
+- A subsequent successful Windows authentication event occurred.
+- Built-in rule `92657` generated an alert.
+- Custom rule `100410` did not produce the expected correlation alert during that test.
+
+A new validation test is required to confirm the updated rule behavior.
+
+**Evidence:** See `docs/04-threat-emulation-report.md`, Stages 2–3.
 #### `100411` — LSASS memory access (level 14)
 EID 10 where `targetImage` ends with `lsass.exe` (T1003.001). Two conditions narrow it, both tightened since the first draft:
 - `sourceImage` allow-list by **full executable path** (`C:\Windows\System32\svchost.exe`, `taskmgr.exe`, `wininit.exe`, `csrss.exe`, `services.exe`, `wbem\WmiPrvSE.exe`, plus the Defender `MsMpEng.exe` paths) — fixed from an earlier version that matched by file name only (`(?:taskmgr|svchost|MsMpEng)\.exe$`), which a malicious binary could trivially spoof by using the same name in a different folder.
@@ -476,8 +565,45 @@ Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `
 
 **Parent reference was wrong, now corrected.** The rule originally chained from `60117` — this turned out not to be a confirmed ancestor of eventchannel Security events, so `100412` may never have been reached in the rule tree at all for the real `1102` event (a different problem from sibling precedence: the parent itself likely never matched). Per Wazuh's own documented eventchannel chain (all eventchannel logs → `60000` → Security channel specifically → `60002`), `if_sid` is now `60002`, a confirmed real ancestor. **Confirmed working, 2026-10-13.** The built-in `63103` fired instead of `100412` in the original 2026-08-28 evidence (captured when the rule still used `60117`); after the `if_sid=60002` fix, a re-test produced two raw `100412` alerts at the intended level 15, with no `63103` row visible in the same Discover view. See `docs/04`, Stage 10.
 
-#### `100413` — PowerShell `Invoke-WebRequest` activity (level 9)
-The live rule is a child of built-in `60009` and matches PowerShell module-logging fields (`contextInfo` containing `Invoke-WebRequest`, plus a `payload` field); MITRE T1059.001 / T1567.002; no `<group>` is set. **It cannot fire with the committed configuration**: the agent does not collect `Microsoft-Windows-PowerShell/Operational`, module logging is not documented as enabled, and `60009` has not been checked against this Wazuh version (`grep -rn 'id="60009"' /var/ossec/ruleset/rules/`). It also does not match the committed Stage 11 script, which exfiltrates with a raw `System.Net.Sockets.TCPClient` to port 4445 — that connection is covered only by `100404` (level 7). The earlier port-4445 version of this rule has been replaced. Either update Stage 11 to use `Invoke-WebRequest` and enable the telemetry, or restore a Sysmon EID 3 rule for the raw-socket case (placed before `100404`).
+#### `100413` — PowerShell `Invoke-WebRequest` Activity (Level 9)
+
+Rule `100413` is designed to identify PowerShell activity involving `Invoke-WebRequest` through PowerShell Module Logging (Event ID `4103`).
+
+The custom rule uses regular-expression matching against the `contextInfo` field and requires the associated `payload` field. It references Wazuh's built-in rule `60009` and is mapped to MITRE ATT&CK technique **T1059.001 (PowerShell)**.
+
+**Current implementation status:**
+
+- **Detection logic:** Implemented in `sysmon_rules.xml`.
+- **Log collection:** The `Microsoft-Windows-PowerShell/Operational` channel has been added to the Wazuh Agent configuration.
+- **Module Logging:** Not yet confirmed as enabled on the Windows endpoint.
+- **Parent rule:** The compatibility of built-in rule `60009` has not yet been verified.
+- **Detection validation:** No confirmed raw alert for rule `100413` is currently available.
+
+**Stage 11 alignment:**
+
+The Stage 11 Windows script has been updated to use `Invoke-WebRequest` instead of the previous `System.Net.Sockets.TCPClient` implementation.
+
+The script compresses a FIM-monitored directory and attempts to transfer the generated archive to a Kali-hosted HTTP endpoint using an HTTP POST request.
+
+This aligns the simulated PowerShell activity with the command targeted by rule `100413`.
+
+However, the current Kali HTTP listener does not implement POST upload handling, so successful file reception has not yet been validated.
+
+**Detection limitations:**
+
+The presence of `Invoke-WebRequest` indicates PowerShell HTTP activity but does not independently confirm data exfiltration.
+
+Successful detection also depends on Module Logging being enabled, the required event fields being collected, and the Wazuh rule chain matching correctly.
+
+**Next steps:**
+
+1. Enable and verify PowerShell Module Logging (Event ID `4103`).
+2. Confirm that the Wazuh Agent forwards the generated event.
+3. Validate the parent rule and regex using `wazuh-logtest`.
+4. Execute a controlled Stage 11 test and inspect the resulting alerts.
+5. Verify successful HTTP file reception separately.
+
+**Status: Implemented — Stage 11 Script Updated; Detection and Transfer Validation Pending.**
 
 #### `100414` — PowerShell / certutil on web ports (level 12)
 EID 3 where the image is `powershell.exe` or `certutil.exe` and the port is 80 or 443. Standard web ports blend into normal traffic; a scripting engine or LOLBin using them is the signal (T1041, T1105). Expect some noise from legitimate scripts; baseline and exclude known destinations.
