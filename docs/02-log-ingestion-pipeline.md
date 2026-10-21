@@ -34,11 +34,39 @@ pfSense sends `filterlog` lines (comma-separated, RFC 3164) to the manager over 
 
 ```json
 {
-  "data": { "protocol": "udp", "srcip": "127.0.0.1", "pfsense": { "reason": "match" }, "action": "pass" },
-  "rule": { "id": "100140", "level": 6 },
-  "location": "192.168.60.254",
-  "decoder": { "name": "pfsense-lab" },
-  "timestamp": "2026-08-28T05:32:14.075+0000"
+  "_index": "wazuh-archives-4.x-2026.08.09",
+  "_source": {
+    "data": {
+      "protocol": "udp",
+      "srcip": "192.168.254.101",
+      "pfsense": {
+        "reason": "match",
+        "rulenum": "76",
+        "interface": "em0",
+        "ttl": "63",
+        "direction": "out"
+      },
+      "dstport": "53",
+      "action": "pass",
+      "srcport": "20455",
+      "dstip": "8.8.8.8"
+    },
+    "rule": {
+      "firedtimes": 1791,
+      "level": 3,
+      "description": "pfSense: Traffic allowed 192.168.254.101:20455 -> 8.8.8.8:53",
+      "groups": [
+        "pfsense",
+        "firewall_pass"
+      ],
+      "id": "100110"
+    },
+    "decoder": {
+      "name": "pfsense-lab"
+    },
+    "full_log": "Aug 9 05:56:36 filterlog[63489]: 76,,,1000002661,em0,match,pass,out,4,0x0,,63,4250,0,none,17,udp,64,192.168.254.101,8.8.8.8,20455,53,44",
+    "timestamp": "2026-08-09T05:56:36.860+0000"
+  }
 }
 ```
 
@@ -79,7 +107,7 @@ The agent reads channels directly (`log_format eventchannel`): `Security`, `Syst
 | Sysmon EID 13 | `CurrentVersion\Run` include | `100406` |
 
 > [!WARNING]
-> The **PowerShell Operational channel (events 4103/4104) is not collected** by the committed agent configuration, and PowerShell module/script-block logging is not documented as enabled. Rule `100413` depends on that telemetry (see `docs/03`); until it is added to the agent and enabled by policy, that rule cannot fire.
+> The **PowerShell Operational channel (events 4103/4104) is configured into ossec.conf  (although it is not verified by testing)** by the committed agent configuration, and PowerShell module/script-block logging is not documented as enabled. Rule `100413` depends on that telemetry (see `docs/03`); until it is added to the agent and enabled by policy, that rule cannot fire.
 
 **Evidence** (abridged from `stage04-sysmon-encoded-powershell.json`; the event was produced by an earlier revision of `100401`).
 
