@@ -40,7 +40,7 @@
 | Wazuh | 4.x (index pattern `wazuh-alerts-4.x-*`) | Record the exact build: `/var/ossec/bin/wazuh-control info`. Rule IDs of built-in rules referenced in `docs/03` (`60002`, `60106`, `92302`, `92657`…) depend on it |
 | Suricata | 8.0.6 (from `suricata.yaml`) | Windows MSI, Npcap capture |
 | Sysmon | schema 4.50, SwiftOnSecurity config v74 | Record the binary version from the `sysmon64.exe` banner |
-| pfSense | config version 24.0 | From `config_backup.xml` |
+| pfSense | Not recorded | From `config_backup.xml` |
 
 Wazuh components, for reference: the **agent** collects and forwards data; the **manager** decodes events and applies rules; the **Indexer** (OpenSearch) stores alerts; the **Dashboard** (OpenSearch Dashboards) is the investigation UI. Installation guide: <https://documentation.wazuh.com/current/quickstart.html>.
 
@@ -94,7 +94,7 @@ Output files in `C:\Program Files\Suricata\log\`: `eve.json`, `fast.log`, `stats
 
 ## 5. Windows endpoint
 
-**Wazuh agent.** Install the MSI, enrol against `192.168.60.137`, then replace `C:\Program Files (x86)\ossec-agent\ossec.conf` with `endpoints/windows-11/ossec.conf` and restart (`Restart-Service -Name wazuh`). That file collects: `Security` (noisy event IDs excluded), `System`, `Application`, `Microsoft-Windows-OpenSSH/Operational`, `Microsoft-Windows-Sysmon/Operational`, the Suricata `eve.json`, and FIM on `C:\Users\LENOVO\Downloads\virustotaltest` and `C:\Users\LENOVO\tmp`. **The PowerShell Operational channel is not collected.**
+**Wazuh agent.** Install the MSI, enrol against `192.168.60.137`, then replace `C:\Program Files (x86)\ossec-agent\ossec.conf` with `endpoints/windows-11/ossec.conf` and restart (`Restart-Service -Name wazuh`). That file collects: `Security` (noisy event IDs excluded), `System`, `Application`, `Microsoft-Windows-OpenSSH/Operational`, `Microsoft-Windows-Sysmon/Operational`, the Suricata `eve.json`, and FIM on `C:\Users\LENOVO\Downloads\virustotaltest` and `C:\Users\LENOVO\tmp`. **The PowerShell Operational channel is configured for collection. However, the availability of module logging and script-block logging events must be verified separately.**
 
 **Sysmon.** Install with the committed configuration (`endpoints/windows-11/sysmon_config.xml`, SwiftOnSecurity v74 plus a `ProcessAccess` filter on `lsass.exe`):
 
@@ -133,6 +133,15 @@ ping 192.168.60.137          # from Windows
 ping 192.168.60.254 && ping 192.168.60.137 && ping 192.168.60.1    # from Kali
 ```
 
+```bash
+sudo /var/ossec/bin/wazuh-analysisd -t
+sudo /var/ossec/bin/wazuh-logtest
+sudo tail -f /var/ossec/logs/alerts/alerts.json
+```
+
+1. First command check the **analysis engine configuration**
+2. Checking the decoder / rule matching (valid or invalid)
+3. Monitoring real alerts from attackers
 | Flow | Path |
 |---|---|
 | Endpoint | Event Log / Sysmon → agent → manager → Indexer → Dashboard |
