@@ -1,32 +1,27 @@
----
-title: "SOC Home Lab — Log ingestion"
-tags: [Blue Team, SOC Home Lab, log ingestion]
-lang: en
-breaks: true
----
+# 02 — Log Ingestion Pipeline
 
-# 02 - Log Ingestion Pipeline
+> [!NOTE]
+> How telemetry and security events travel from the endpoint and network devices to Wazuh, and which custom parsing each source needs. JSON snippets are **abridged** copies of alerts stored in `threat-emulation/evidence-logs/`; the file each one comes from is named under it.
 
+| Source | Transport | Decoder | Parent of the custom rules |
+|---|---|---|---|
+| pfSense firewall | Syslog UDP/514 → manager | custom `pfsense-lab` (+5 children) | `100100` |
+| Suricata (endpoint) | `eve.json` → agent `localfile` (json) | built-in JSON decoder | `86601` |
+| Windows Security / Sysmon / OpenSSH | Event Log channels → agent (`eventchannel`) | built-in `windows_eventchannel` | built-in Windows/Sysmon rules |
+| FIM and VirusTotal | agent syscheck → manager integration | built-in | `550`–`593` range → `87105` |
 
-:::info
-This document outline how telementry and security events are routed from different endpoints and network devices to the central Wazuh SIEM. It covers log sources , requiring custom configurations and custom data parsing(decoders)
-:::
+## 1. pfSense syslog and the custom decoder
 
-## Network telementry (Pfsense Syslog & decoders)
+pfSense sends `filterlog` lines (comma-separated, RFC 3164) to the manager over UDP/514 (`192.168.60.137:514`; see `docs/01` §3 for the listener). Wazuh has no stock decoder for this layout, so custom decoders in `siem-wazuh/custom-decoder/local_decoder.xml` extract the fields that rules need (`srcip`, `dstip`, `srcport`, `dstport`, `protocol`, `action`).
 
-- Pfsense firewall logs are forwarded to Wazuh server via `Syslog` over UDP port `514`.Because pfsense use the comma-seperated format (`filterlog`), custom decoders are required to `parse the raw strings` into `queryable fields` (e.g: `srcip`, `dstip`,`dstport`,`srcport`).
-- Therefore, `regex-based decoding` is used to `extract` and `map` the relevant fields from raw pfSense filterlog messages into `structured fields` that can be used for `detection` and `investigation`.
+| Decoder | Purpose |
+|---|---|
+| `pfsense-lab` | Parent: recognises any `filterlog[pid]:` line |
+| `pfsense-lab-ports` | IPv4 TCP/UDP (has ports) |
+| `pfsense-lab-icmp` | IPv4 ICMP echo |
+| `pfsense-lab-igmp`, `pfsense-lab-ipv4`, `pfsense-lab-ipv6` | Fallbacks for other protocols |
 
-
-**Custom Decoders Implemented**:
-
-* `pfsense-lab`: The base decoder identifying pfsense filterlogs
-* `pfsense-lab-ports`: Parses TCP/UDP traffic raw logs containing port numbers
-* `pfsense-lab-icmp`: Parses ICMP traffic (pings and sweeps)
-* `pfsense-lab-igmp/pfsense-lab-ipv4/pfsense-lab-ipv6`: Fallback decoders for other traffics and protocols
-
-**Example of Decoder snippet(TCP/UDP)** 
-```xml=
+```xml
 <decoder name="pfsense-lab-ports">
     <parent>pfsense-lab</parent>
     <prematch type="pcre2" offset="after_parent">\d+,,,.*?,4,.*?,(?:tcp|udp),</prematch>
@@ -34,241 +29,88 @@ This document outline how telementry and security events are routed from differe
     <order>pfsense.rulenum,pfsense.tracker,pfsense.interface,pfsense.reason,action,pfsense.direction,pfsense.ipversion,pfsense.tos,pfsense.ecn,pfsense.ttl,pfsense.id,pfsense.offset,pfsense.flags,pfsense.protocol_number,protocol,pfsense.length,srcip,dstip,srcport,dstport,pfsense.data_length</order>
 </decoder>
 ```
-**Ingestion evidence**
 
-- When pfSense forwards a filterlog message to Wazuh over syslog,
-Wazuh records the log source in the `location` field.
+**Evidence** (abridged from `stage01-pfsense-synburst.json`): `location` is the sender's address (`192.168.60.254`, pfSense) and the decoder is the custom one.
 
-- The custom `pfsense-lab` decoder identifies the filterlog format,
-while its child decoders extract structured fields such as
-`srcip`, `dstip`, `srcport`, `dstport`, `protocol`, and `action`.
-
-- The `location` field identifies the log source; it does not
-perform parsing or field extraction.
-```json=
+```json
 {
-  "_index": "wazuh-archives-4.x-2026.08.09",
-  "_source": {
-    "data": {
-      "protocol": "udp",
-      "srcip": "192.168.254.101",
-      "pfsense": {
-        "reason": "match",
-        "rulenum": "76",
-        "interface": "em0",
-        "ttl": "63",
-        "direction": "out"
-      },
-      "dstport": "53",
-      "action": "pass",
-      "srcport": "20455",
-      "dstip": "8.8.8.8"
-    },
-    "rule": {
-      "firedtimes": 1791,
-      "level": 3,
-      "description": "pfSense: Traffic allowed 192.168.254.101:20455 -> 8.8.8.8:53",
-      "groups": [
-        "pfsense",
-        "firewall_pass"
-      ],
-      "id": "100110"
-    },
-    "decoder": {
-      "name": "pfsense-lab"
-    },
-    "full_log": "Aug 9 05:56:36 filterlog[63489]: 76,,,1000002661,em0,match,pass,out,4,0x0,,63,4250,0,none,17,udp,64,192.168.254.101,8.8.8.8,20455,53,44",
-    "timestamp": "2026-08-09T05:56:36.860+0000"
-  }
+  "data": { "protocol": "udp", "srcip": "127.0.0.1", "pfsense": { "reason": "match" }, "action": "pass" },
+  "rule": { "id": "100140", "level": 6 },
+  "location": "192.168.60.254",
+  "decoder": { "name": "pfsense-lab" },
+  "timestamp": "2026-08-28T05:32:14.075+0000"
 }
 ```
-:::spoiler
-(Note: location shows `192.168.60.254`, the pfSense gateway IP, and decoder confirms our custom pfsense-lab decoder parsed it).
-:::
 
-## Host-Based Network IDS: Suricata Integration
+> [!NOTE]
+> This sample is loopback DNS traffic on the firewall itself (see `docs/04`, Stage 1), shown only to prove decoding, not as a detection of the scan. Its syslog header is about 17.5 hours older than the arrival time, so check pfSense's clock before correlating firewall events with endpoint events.
 
-- Suricata is deployed directly on the Windows 11 physical host,
-which also serves as the victim endpoint.
+## 2. Suricata on the endpoint
 
-- Using Npcap, Suricata monitors network traffic visible to the
-VMware VMnet1 adapter. This includes attacker-to-victim traffic
-generated by the Kali Linux VM on the internal network.
+Suricata runs on the Windows endpoint and inspects traffic on its VMnet1 adapter, so it sees **east-west traffic to and from that host**. It writes alerts to `C:\Program Files\Suricata\log\eve.json`; the agent tails that file (`<localfile>` with `log_format json`, see `endpoints/windows-11/ossec.conf`) and the manager's built-in rule `86601` classifies `event_type: alert` events. Custom wrappers (`100300`–`100309`, `siem-wazuh/custom-rules/suricata_rules.xml`) select a single `alert.signature_id` each and assign level and MITRE ID.
 
-- Suricata analyzes captured packets using its detection rules and
-writes structured events to its EVE JSON log.
+**Evidence** (abridged from `stage08-suricata-reverse-shell-baseline-test.json`): `location` is the file path on the endpoint.
 
-- The Wazuh Agent does not perform packet inspection. Instead, it
-collects the generated `eve.json` events and forwards them to
-the Wazuh Manager for further analysis and alert generation.
-- **Ingestion method**: The Windows Wazuh Agent is configured with a JSON log collector
-to monitor Suricata's EVE JSON output:
-
-`C:\Program Files\Suricata\log\eve.json`
-
-The agent reads the generated JSON events and forwards them to
-the Wazuh Manager over TCP port 1514.
-[ossec agent config file](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/endpoints/windows-11/ossec.conf?utm_source=chatgpt.com)
-
-### Suricata Signatures vs Wazuh Detection Rules
-
-Suricata signature IDs and Wazuh rule IDs represent different
-stages of the detection pipeline.
-
-For example:
-
-- Suricata SID `1000006` identifies suspicious outbound traffic.
-- Wazuh rule `100304` evaluates the corresponding Suricata event.
-- The resulting Wazuh alert is indexed and displayed in the dashboard.
-
-A Suricata alert does not automatically prove malicious behavior
-or a confirmed Command-and-Control session.
-
-:point_right: **Ingestion Evidence**
-
-The raw Wazuh alert explicitly shows the `location` pointing to the `physical file path` on the `Window endpoint`
-
-```json=
+```json
 {
   "agent": { "ip": "192.168.60.1", "name": "window11Host", "id": "001" },
-  "data": {
-    "src_ip": "192.168.60.1",
-    "dest_port": "31337",
-    "alert": { "signature": "LOCAL Possible Reverse Shell - Suspicious Outbound Port" }
-  },
+  "data": { "src_ip": "192.168.60.1", "dest_port": "31337",
+            "alert": { "signature": "LOCAL Possible Reverse Shell - Suspicious Outbound Port" } },
   "rule": { "id": "100304", "level": 12 },
   "location": "C:\\Program Files\\Suricata\\log\\eve.json",
   "decoder": { "name": "json" }
 }
 ```
-:::spoiler
-Note: `location` confirms the agent is successfully reading from `C:\Program Files\Suricata\log\eve.json`
-:::
 
-## Windows Endpoint Telemetry: Event logs & Sysmon
+`eve.json` also carries `stats`, `flow`, `http`, `dns` and other event types; only `alert` events match the wrappers. The extra volume is a known tuning item.
 
-:::info
-To ensure sufficient evidence capture for techniques like `brute force` and `lateral movement` , the Windows endpoint requires specific logging configurations before Wazuh can ingest the data
-:::
+## 3. Windows Event Log and Sysmon
 
-Required Window audit Policies:
-- Audit logon (Success + Failure): captures Event 4624 (Success) & 4625 (Failure) for brute force detection
-- Audit Process Creation: Capture Event 4688 (requires enabling Command line auditing in Group Policy)
-    - Windows Security Event ID 4688 and Sysmon Event ID 1 both
-    provide process creation telemetry, but they originate from
-    different logging mechanisms.
-    
-    Security Event 4688 depends on Windows audit policy settings.
-    
-    Sysmon Event 1 depends on Sysmon being installed and configured
-    to record process creation events.
-    
-    Both sources can complement each other in detection engineering.
+The agent reads channels directly (`log_format eventchannel`): `Security`, `System`, `Application`, `Microsoft-Windows-OpenSSH/Operational` and `Microsoft-Windows-Sysmon/Operational`. The Windows audit policies and the Sysmon install are in `docs/01` §5.
 
-**Sysmon ingestion scope**
-1. The Wazuh Agent reads native `Windows Event Logs`and `Sysmon logs` via the `Window_eventchannel` API rather than reading a flat text file
+| Telemetry | Needs | Used by |
+|---|---|---|
+| Security `4624` / `4625` | Audit *Logon* success + failure | `100408`, `100410` |
+| Security `1102` | always logged | `100412` |
+| Sysmon EID 1 | Sysmon; command-line fields | `100400`–`100403`, `100407` |
+| Sysmon EID 3 | include list in `sysmon_config.xml` | `100404`, `100414` |
+| Sysmon EID 10 | `ProcessAccess` include on `lsass.exe` | `100411`, `100416` |
+| Sysmon EID 11 | include by extension/folder | `100405` |
+| Sysmon EID 13 | `CurrentVersion\Run` include | `100406` |
 
-2. Sysmon is deployed to provide deep process visibility. The Wazuh Agent ingest the following key Sysmon Event IDs from the `Microsoft-Windows-Sysmon/operartional` channel:
-    - Event ID 3(Network connect): Tracks outbound connections from suspicious processes (Used for C2 and exfiltration detection)
-    - Event ID 11(file create): Monitors executables dropped in sensitive data paths (e.g: \Temp\)
-    - Event ID 13(registry Event): Monitors persistence mechanism(e.g: \CurrentVersion\Run)
-    - Event ID 1(Process create): Captures process lineage (e.g:Powershell.exe,cmd.exe spawning net.exe) and command-line arguments(e.g: EncondedCommand)
-    - Event ID 10(ProcessAccess): Records process-access activity according to the active Sysmon
-configuration.
+> [!WARNING]
+> The **PowerShell Operational channel (events 4103/4104) is not collected** by the committed agent configuration, and PowerShell module/script-block logging is not documented as enabled. Rule `100413` depends on that telemetry (see `docs/03`); until it is added to the agent and enabled by policy, that rule cannot fire.
 
-    Access to sensitive processes such as lsass.exe may support
-    credential-access investigations, but the event alone does
-    not prove credential dumping.
-    
-    The source process, granted access rights, process lineage,
-    and surrounding telemetry must be considered.
+**Evidence** (abridged from `stage04-sysmon-encoded-powershell.json`; the event was produced by an earlier revision of `100401`).
 
-```json=
+```json
 {
   "agent": { "ip": "192.168.60.1", "name": "window11Host", "id": "001" },
-  "data": {
-    "win": {
-      "eventdata": {
-        "image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
-        "commandLine": "\"powershell.exe\" -NoProfile -EncodedCommand dwBoAG8AYQ..."
-      },
-      "system": {
-        "eventID": "1", 
-        "channel": "Microsoft-Windows-Sysmon/Operational",
-        "providerName": "Microsoft-Windows-Sysmon"
-      }
-    }
-  },
+  "data": { "win": {
+    "eventdata": { "image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+                   "commandLine": "\"...powershell.exe\" -NoProfile -EncodedCommand dwBoAG8AYQBt..." },
+    "system": { "eventID": "1", "channel": "Microsoft-Windows-Sysmon/Operational" } } },
   "rule": { "id": "100401", "level": 10 },
   "decoder": { "name": "windows_eventchannel" }
 }
 ```
-### PowerShell Operational Telemetry
 
-The Wazuh Agent is configured to collect events from:
+## 4. File integrity monitoring and VirusTotal
 
-`Microsoft-Windows-PowerShell/Operational`
+The agent's syscheck module watches `C:\Users\LENOVO\Downloads\virustotaltest` in real time (and `C:\Users\LENOVO\tmp`, with change reporting); other paths are scanned every 12 hours. When a file is added or changed, syscheck reports its hashes, and the manager's VirusTotal integration (restricted to `syscheck` alerts) looks them up. The reputation alert is generated **on the manager**, which is why its `location` is `virustotal`.
 
-This channel can provide additional PowerShell execution telemetry,
-including Event ID 4103 when Module Logging is enabled.
+**Evidence** (abridged from `stage06-virustotal-malicious-detected.json`, an earlier run of the same EICAR test on 2026-08-17):
 
-The event channel being configured in the Wazuh Agent does not
-guarantee that Module Logging is enabled in Windows.
-
-PowerShell logging policies and event generation must be validated
-separately before relying on these events for detection.
-
-## File Intergrity and Threat Intelligence (VirusTotal)
-
-### FIM Collection Scope
-
-Wazuh FIM monitors selected directories on the Windows physical
-host, including:
-
-- `C:\Users\LENOVO\Downloads\virustotaltest`
-- `C:\Users\LENOVO\tmp`
-
-These paths are configured in the Windows Agent's `<syscheck>`
-section with real-time monitoring enabled.
-
-### VirusTotal Enrichment
-
-When Wazuh FIM generates an eligible alert containing file hash
-information, the configured VirusTotal integration can query
-the VirusTotal API for file reputation.
-
-The integration result is processed by Wazuh as a separate event.
-
-For example, rule `87105` represents a VirusTotal detection
-result in the recorded lab evidence.
-**Ingestion evidence**
-
-```json=
+```json
 {
   "agent": { "ip": "192.168.60.1", "name": "window11Host" },
-  "data": {
-    "integration": "virustotal",
-    "virustotal": {
-      "malicious": "1", "found": "1", "positives": "62",
-      "source": {
-        "file": "c:\\users\\lenovo\\downloads\\virustotaltest\\eicar-facebook.com",
-        "md5": "44d88612fea8a8f36de82e1278abb02f"
-      }
-    }
-  },
+  "data": { "integration": "virustotal",
+            "virustotal": { "malicious": "1", "found": "1", "positives": "62",
+              "source": { "file": "c:\\users\\lenovo\\downloads\\virustotaltest\\eicar-facebook.com",
+                          "md5": "44d88612fea8a8f36de82e1278abb02f" } } },
   "rule": { "id": "87105", "level": 12 },
   "location": "virustotal"
 }
 ```
-- VirusTotal returns file reputation and detection information.
 
-- In the recorded example, `positives: 62` and `total: 66`
-indicate that 62 of the 66 engines represented in the
-integration result detected the test file.
-
-- These values describe the recorded detection result;
-they should not be interpreted as a universal
-reputation score.
-:::spoiler
-Note: location shows virustotal, indicating this alert was generated internally by the Wazuh manager's API intergration , not directly from the endpoint file
-:::
+Limits: only hashes are sent; unknown files return no verdict; the free API tier (about 4 requests/minute) can delay lookups in bursts.
