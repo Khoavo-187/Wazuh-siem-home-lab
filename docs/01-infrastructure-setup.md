@@ -25,8 +25,6 @@
 | **Kali Linux** (VM) | Attacker | Host-only `192.168.60.135`; second adapter `192.168.254.100` on the pfSense WAN-side network, used only for the WAN-side test |
 | **pfSense** (VM) | Firewall/gateway; forwards firewall logs to Wazuh by syslog | WAN (`em0`) `192.168.254.101/24`, gateway `192.168.254.1`; LAN (`em1`) `192.168.60.254/24` |
 
-<!-- CONFIRM BEFORE PUBLISHING: the endpoint's name, its address (.1 is the VMware host's default VMnet1 address) and the Suricata capture on the VMnet1 adapter suggest it may be the physical VMware host rather than a VM. State which it is, and if it is the host, say how the lab is isolated and snapshotted. -->
-
 **Network facts used throughout the docs**
 - Kali, pfSense (LAN), the Windows endpoint and the Wazuh server share one `/24`, `192.168.60.0/24`, on VMware VMnet1. Kali → Windows traffic is therefore **east-west on the same segment and does not cross pfSense**. pfSense only logs traffic that actually crosses it.
 - pfSense DHCP serves `.100`–`.199`; Kali (`.135`) and Wazuh (`.137`) are inside that range, the Windows endpoint (`.1`) is outside it.
@@ -40,7 +38,7 @@
 | Wazuh | 4.x (index pattern `wazuh-alerts-4.x-*`) | Record the exact build: `/var/ossec/bin/wazuh-control info`. Rule IDs of built-in rules referenced in `docs/03` (`60002`, `60106`, `92302`, `92657`…) depend on it |
 | Suricata | 8.0.6 (from `suricata.yaml`) | Windows MSI, Npcap capture |
 | Sysmon | schema 4.50, SwiftOnSecurity config v74 | Record the binary version from the `sysmon64.exe` banner |
-| pfSense | Not recorded | From `config_backup.xml` |
+| pfSense | Not recorded | backup file configuration (secure) |
 
 Wazuh components, for reference: the **agent** collects and forwards data; the **manager** decodes events and applies rules; the **Indexer** (OpenSearch) stores alerts; the **Dashboard** (OpenSearch Dashboards) is the investigation UI. Installation guide: <https://documentation.wazuh.com/current/quickstart.html>.
 
