@@ -137,37 +137,118 @@ ping -c 5 192.168.60.1
 ![Figure 2 — Stage 1 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage1_recon.png)
 
 *Figure 2 — Stage 1: reconnaissance evidence screenshot (original run).*
+### Alert observed
 
-**Alert observed**
+Two historical alerts associated with pfSense rule `100140` were identified. Neither can be directly attributed to the Kali reconnaissance scan.
 
-| Field | Value |
-|---|---|
-| Rule | `100140` — pfSense TCP burst, level 6 (earlier rule version) |
-| Alert time | 2026-08-28 05:32:14 |
-| Log line | `filterlog`, interface `lo0`, `pass`, UDP, `127.0.0.1` → `127.0.0.1:53` |
-| Decoder | `pfsense-lab` |
+| Field | Earlier observation | Additional raw evidence |
+|---|---|---|
+| Rule | `100140` — pfSense TCP burst, level 6 | `100140` — pfSense TCP burst, level 6 |
+| Alert time | 2026-08-28 05:32:14 | 2026-08-08 10:53:29 UTC |
+| Source | `127.0.0.1` | `192.168.60.101:61197` |
+| Destination | `127.0.0.1:53` | `162.159.197.3:443` |
+| Interface | `lo0` | `em1` |
+| Protocol | UDP | TCP |
+| Action | `pass` | `pass` |
+| Decoder | `pfsense-lab` | `pfsense-lab` |
+| Interpretation | Loopback DNS traffic | Outbound HTTPS connection burst |
 
-**Analysis**
+**Additional evidence — August 8, 2026**
 
-- **The alert is not caused by the scan.** Source and destination are the loopback address, the interface is `lo0` and the port is 53 (DNS). It is background DNS traffic on the firewall itself, not Nmap traffic from Kali.
-- **pfSense is probably not the right sensor for this step.** Kali and the Windows host sit in the same `/24`, and a firewall only logs traffic that crosses it (inference). This is the east-west case that motivates the second Suricata instance on the endpoint, so the expected alert is Suricata `100300` (sid `1000002`). No raw alert for it is preserved for this run.
-- **Clock offset on pfSense.** The syslog timestamp in the log line is `Aug 27 11:57:42`, while Wazuh received the event on 2026-08-28 at 05:32 UTC, a gap of about 17.5 hours. pfSense is configured for `Etc/UTC` with an NTP pool, so a time-zone error is unlikely; a VM clock that fell behind while the host was asleep is more plausible. Either way it would break cross-source correlation.
-- **The false positive is already addressed.** The current version of `100140` only counts connections to administrative ports (`22, 23, 445, 3389, 5900, 1433, 3306`), so loopback DNS no longer matches.
+The preserved raw Wazuh alert confirms that rule `100140` fired on TCP traffic entering pfSense's LAN interface (`em1`):
 
-**Re-test attempt: triggering pfSense from the WAN side**
+```text
+Rule ID:      100140
+Level:        6
+Frequency:    15
+Decoder:      pfsense-lab
+Source:       192.168.60.101:61197
+Destination:  162.159.197.3:443
+Protocol:     tcp
+Interface:    em1
+Action:       pass
+Direction:    in
+```
 
-The root cause above — a same-LAN scan not necessarily transiting pfSense's own rule evaluation — led to a second idea, attempted but not completed with clean evidence:
+The alert confirms that the pfSense decoder and custom rule were operational for this traffic pattern. However, the source and destination do not establish any relationship to the Kali reconnaissance scan.
 
-1. Attack the pfSense **WAN** interface from outside the LAN (i.e. treat it like an internet-facing attacker, not a same-subnet neighbour): an Nmap scan or a Netcat-based port brute force directed at the WAN address.
-2. Watch pfSense's own firewall decision on that traffic — **block** or **pass** — in the `filterlog`.
-3. A packet reaching pfSense WAN will be evaluated by the WAN firewall rules. **No inbound WAN→LAN port-forward is represented by the documented topology**, so do not expect an unsolicited probe to reach the Windows endpoint. Such a test can still exercise pfSense block rules (`100101`/`100102`) if `filterlog` records it.
+### Analysis
 
-This is architecturally the traffic pfSense's rule tree is actually built to reason about (`srcip` outside the LAN, a real `block`/`pass` decision at the boundary) — unlike the original Stage 1 attempt, where attacker and victim share the same `/24` and pfSense mostly only sees its own background traffic.
+**1. The observed alerts do not confirm Kali reconnaissance detection.**
 
-**No usable evidence was captured.** The attempt produced events where the logged source IP did not look right — in a related Stage 2 re-test session (`192.168.60.1`, the *victim's own* LAN IP, appeared as the attacker source in one alert; see Stage 2 below) rather than a genuine external or WAN-side address. The likely cause is **NAT hairpinning**: when a host reaches the public/WAN IP through a path that pfSense ends up routing back through its own LAN interface, the original source address can be lost or rewritten, and Windows/Wazuh then report a local address instead of the real one. This has **not been confirmed** with a packet capture on both the WAN and LAN interfaces simultaneously, so treat it as a working hypothesis, not a finding. A second candidate is asymmetric routing: Kali has two adapters (`192.168.254.100` and `192.168.60.135`), so replies can leave by a different interface than the one the scan used. Test with Kali attached only to the WAN-side network.
+The August 28 alert concerns local DNS traffic (`127.0.0.1:53`) on the firewall's loopback interface, not Nmap traffic.
 
-**Verdict: ⚠️ Inconclusive** — re-run and capture the Suricata `100300` alert (see §7). The WAN-side idea above is worth repeating with `tcpdump` on both pfSense interfaces at once, to see directly whether the source IP survives the NAT hop.
+The additional August 8 alert represents a TCP connection burst from `192.168.60.101` to an external HTTPS destination (`162.159.197.3:443`). This is evidence of a functioning pfSense detection rule, but not of the intended scan.
 
+Furthermore, the rule description refers to SYN packets, whereas the custom decoder does not extract TCP flags. The alert therefore confirms a **TCP connection burst**, not necessarily a SYN scan or SYN flood.
+
+**2. Network visibility limits the original test.**
+
+Kali (`192.168.60.135`) and the Windows victim are on the same `192.168.60.0/24` subnet.
+
+Direct host-to-host traffic on this subnet does not normally traverse pfSense's routed firewall interfaces. Consequently, pfSense cannot be relied upon to observe this east-west reconnaissance traffic.
+
+The Windows endpoint Suricata sensor is better positioned to detect the scan through rule `100300` (Suricata sid `1000002`).
+
+No corresponding raw `100300` alert was preserved for this test.
+
+**3. Historical false positives and rule improvements.**
+
+The observed `100140` alerts were generated under earlier rule versions.
+
+The current rule restricts detection to selected administrative ports:
+
+`22, 23, 445, 3389, 5900, 1433, 3306`
+
+This excludes both observed destinations, UDP/53 and TCP/443, from the intended current detection scope.
+
+The restriction reduces unrelated traffic alerts, but its effectiveness still requires validation against the deployed configuration.
+
+**4. Timestamp inconsistency.**
+
+The August 28 alert contains a pfSense syslog timestamp of `Aug 27 11:57:42`, while the Wazuh alert was recorded on August 28 at `05:32 UTC`.
+
+This discrepancy may indicate VM clock drift or delayed event processing. Its root cause remains unverified.
+
+In contrast, the additional August 8 evidence shows matching pfSense predecoder and Wazuh UTC timestamps (`10:53:29`).
+
+The timestamp anomaly should therefore not be generalized to all pfSense events.
+
+### Re-test attempt — WAN-side reconnaissance
+
+A separate WAN-side reconnaissance approach was considered to exercise pfSense's perimeter detection rules.
+
+The intended procedure was to:
+
+1. Generate scan traffic toward the pfSense WAN interface from the WAN-side network.
+2. Verify firewall `block` or `pass` decisions in `filterlog`.
+3. Correlate the resulting events with Wazuh rules `100101` and `100102`.
+4. Capture traffic on the WAN and LAN interfaces to verify source addresses and routing.
+
+No clean evidence was preserved from this attempt.
+
+Unexpected source-IP observations during related authentication tests raised possible NAT or asymmetric-routing concerns. However, neither explanation has been confirmed through packet captures.
+
+Without a documented WAN-to-LAN port-forward, unsolicited WAN probes should not be expected to reach the Windows endpoint.
+
+This test remains separate from the original east-west reconnaissance objective.
+
+### Verdict: ⚠️ PARTIALLY VALIDATED
+
+**Confirmed:**
+- The custom `pfsense-lab` decoder successfully processed firewall traffic.
+- Rule `100140` generated a level-6 alert for a TCP connection burst.
+- The additional raw evidence confirms detection of outbound TCP/443 traffic under an earlier rule version.
+
+**Not confirmed:**
+- Detection of the original Kali-to-Windows Nmap scan.
+- A corresponding Suricata `100300` alert.
+- Successful WAN-side reconnaissance detection.
+- Effectiveness of the revised `100140` port restrictions in a new positive test.
+
+**Conclusion:** The pfSense detection pipeline is supported by historical raw evidence, but the original Stage 1 reconnaissance detection objective remains unverified.
+
+**Next validation:** Repeat the Kali-to-Windows scan, preserve a raw Suricata `100300` alert, and independently validate pfSense perimeter detection using controlled WAN-side traffic.
 ---
 
 ### Stage 2 — Brute Force (T1110)
@@ -860,7 +941,7 @@ excerpt, rule mismatch) is recorded in the index linked at the end of this appen
 | Stage | Attack script(s) | Evidence log(s) |
 |---|---|---|
 | 0 Preparation | `00-preparation_kali.sh` | — |
-| 1 Reconnaissance | `01-reconnaissance_kali.sh` | `stage01-pfsense-synburst.json` |
+| 1 Reconnaissance | `01-reconnaissance_kali.sh` | `baseline-pfsense-synburst-example1.json` |
 | 2 Brute Force | `02-bruteforce_kali.sh` | `stage02-suricata-ssh-bruteforce.json`, `stage02-windows-4625-failed-logon.json`, `stage02-rule-100408-bruteforce-retest.json` |
 | 3 Successful Access | `03-successful-access_kali.sh` | `stage03-windows-4740-account-locked.json`, `stage03-rule-100410-correlation-excerpt.json`, `stage03-rule-92657-successful-logon.json` |
 | 4 Execution | `04-execution_windows.ps1` | `stage04-sysmon-encoded-powershell.json` |
