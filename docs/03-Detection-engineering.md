@@ -524,26 +524,44 @@ Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `
 
 #### `100413` — PowerShell `Invoke-WebRequest` Activity (Level 9)
 
-This rule looks for PowerShell Module Logging content containing `Invoke-WebRequest` in `win.eventdata.contextInfo` and an additional match in `win.eventdata.payload`. It uses built-in parent `60009`. The committed `sysmon_rules.xml` has the following **implemented but unvalidated** detection conditions:
+100413 — PowerShell Invoke-WebRequest Activity (Level 9)
 
-```xml
+Detection objective: Identify PowerShell Invoke-WebRequest activity through Module Logging (Event ID 4103), providing visibility into potentially suspicious HTTP transfers (T1059.001).
+
+Proposed configuration — not yet deployed or validated:
+```xml=
 <rule id="100413" level="9">
   <if_sid>60009</if_sid>
-  <field name="win.eventdata.contextInfo" type="pcre2">(?i)Invoke-WebRequest</field>
-  <field name="win.eventdata.payload" type="pcre2">(?i)(Uri|http|Post|InFile|C:\\)</field>
-  <!-- description / MITRE omitted -->
+
+  <field name="win.system.channel" type="pcre2">^Microsoft-Windows-PowerShell/Operational$</field>
+  <field name="win.system.eventID">^4103$</field>
+  <field name="win.eventdata.payload" type="pcre2">(?i)Invoke-WebRequest</field>
+
+  <description>PowerShell: Invoke-WebRequest activity detected - review for suspicious HTTP transfer</description>
+
+  <mitre><id>T1059.001</id></mitre>
+  <group>powershell,web_request,suspicious_activity,</group>
 </rule>
 ```
+**Detection logic:**
+Parent 60009: Wazuh's generic Windows informational-event rule, not a rule exclusive to Event ID 4104. Its use with PowerShell Module Logging is supported by Wazuh's published detection examples.
 
-**Telemetry status:** `Microsoft-Windows-PowerShell/Operational` is already declared in the committed Windows Wazuh Agent `ossec.conf`. However, enabling the channel for **collection** does not enable PowerShell **Module Logging (Event ID 4103)** or **Script Block Logging (Event ID 4104)** on Windows. Whether the respective policies are enabled, whether Wazuh receives the needed `contextInfo` and `payload` fields, and whether built-in parent `60009` matches the event are all **unverified**. Script Block Logging (4104) is useful independent telemetry; this rule specifically targets Module Logging data (4103).
+Event 4103: Explicitly restricts matching to PowerShell Module Logging in the Operational channel.
 
-**Stage 11 alignment:** The currently committed Windows attack script uses `Compress-Archive` followed by `Invoke-WebRequest -Method Post -InFile` to `http://192.168.60.135:8000/upload`. It no longer sends the archive with `System.Net.Sockets.TCPClient`. This aligns the intended PowerShell command with the rule's keyword, **but does not prove the regex matched** or that the file was received completely. The committed Kali script runs stock `python3 -m http.server 8000`, which does not implement saving POST bodies; the following `nc -lvnp 4445` is not part of the HTTP upload path and is not reached until the foreground HTTP server exits. Any separate successful transfer should be supported by receiver-specific evidence.
+Payload matching: Searches decoded module-logging content for Invoke-WebRequest. Field availability and content must be confirmed against actual events.
 
-**Detection and ATT&CK limits:** A match on `Invoke-WebRequest` indicates PowerShell web-request activity, **not necessarily exfiltration**. `T1059.001` is directly supported by the intended behavior. The XML additionally tags `T1567.002` (cloud-storage exfiltration), which is **not justified by the current Kali-hosted HTTP endpoint** and should be removed from the rule when the XML is next edited. Stage 11's separate exfiltration-technique mapping depends on whether the HTTP upload uses a non-C2 channel (consider `T1048.003`) or the existing C2 channel (`T1041`).
+**Validation and limitations:**
+The Windows Wazuh agent already collects the PowerShell Operational channel, but Module Logging activation, Event 4103 ingestion, and positive rule matching remain unverified.
 
-**Validation sequence:** (1) enable and verify Module Logging; (2) generate a benign `Invoke-WebRequest` event; (3) confirm Event `4103` locally; (4) confirm the event reaches Wazuh with actual decoded fields; (5) inspect built-in parent `60009` and test the rule with `wazuh-logtest`; (6) preserve the raw `100413` alert only if it fires. Verify file reception separately.
+PowerShell Module Logging may distribute command and parameter information across multiple records; the proposed rule only matches individual events containing the target string in payload.
 
-**Status: Implemented in XML and Stage 11 script updated; telemetry, detection and transfer validation pending.**
+Detection of Invoke-WebRequest does not independently establish data exfiltration. The previous T1567.002 cloud-storage mapping is not applicable to the lab's Kali-hosted HTTP endpoint.
+
+The Stage 11 script uses `Invoke-WebRequest` `-Method Post` `-InFile`, but no raw 100413 alert has been preserved.
+
+**Next validation**: Confirm local Event 4103 generation, inspect actual contextInfo/payload values, verify the parent rule through wazuh-logtest, and preserve a raw 100413 alert before claiming detection success.
+
+**Status**: Rule revision proposed — PowerShell telemetry and positive detection pending validation.
 
 #### `100414` — PowerShell / certutil on web ports (level 12)
 EID 3 where the image is `powershell.exe` or `certutil.exe` and the port is 80 or 443. Standard web ports blend into normal traffic; a scripting engine or LOLBin using them is the signal (T1041, T1105). Expect some noise from legitimate scripts; baseline and exclude known destinations.
@@ -642,7 +660,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 | 8 | Some XML `<field>` regular expressions span multiple lines | **Pending controlled test:** whitespace/line-break handling should be checked with actual decoded events, especially rules `100403`, `100405`, `100411`; do not assume every expression is normalized. |
 | 9 | Windows agent configuration previously monitored Suricata `eve.json` repeatedly | **Configuration fixed:** one `localfile` declaration remains. |
 | 10 | pfSense ICMP/TCP-burst noise | **Configuration fixed:** `100200` is low level with `no_log`; `100140` is restricted to administrative TCP destination ports. Historical UDP/loopback evidence comes from an earlier rule revision. |
-| 11 | Rule `100413` and Stage 11 previously used different behaviors | **Script aligned / alert pending:** Stage 11 Windows script now uses `Invoke-WebRequest`. Agent already declares PowerShell Operational; Module Logging (4103), built-in parent `60009`, the rule match, and transfer success remain unverified. |
+| 11 | Rule `100413` uses generic informational-event parent `60009` to inspect PowerShell Module Logging fields. The parent is not restricted to Event 4104, but the current rule lacks an explicit Event 4103 filter, and its contextInfo/payload conditions have not been validated. | **Rule refinement proposed / validation pending**: Restrict matching to PowerShell Operational Event 4103, verify decoded field contents, and test the actual rule path. Stage 11 uses Invoke-WebRequest, but no positive 100413 alert is preserved. |
 | 12 | Suricata sid `1000011` matches only a limited URI extension list | **Unresolved tuning:** `.com` and other extensions, and URIs with query parameters, are not covered. Extend only if the intended scope requires it; validate false positives. |
 | 13 | Rule `100400` formerly had an invalid field substitution in its description | **Fixed / confirmed:** corrected `$(win.eventdata.user)` in an Oct 13 raw alert. |
 | 14 | Rule `100401` still contains a stray quotation mark in its description | **Cosmetic XML fix pending:** normalize `CMD:` when modifying the rule. |
@@ -651,7 +669,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 | 17 | Rule `100411` full-path allow-list and escaped Windows paths | **Filter not proved:** compare decoded `sourceImage` to the regex with `wazuh-logtest`; the Defender event was suppressed by the unmatched access mask `0x101000`, not proof that the allow-list itself works. |
 | 18 | Rule `100400` can shadow `100402` for `net.exe` / `net1.exe` started from a shell | **Unresolved precedence/tuning:** either exclude `net`/`net1` from the generic rule or prove the specific rule wins after the change; preserve a fresh raw test. |
 | 19 | Suricata wrapper `<field name="alert.signature_id">` uses unanchored numeric patterns | **Optional hardening:** prefer `^SID$` for each exact SID to avoid accidental partial matches. |
-| 20 | ATT&CK cloud-exfiltration mapping `T1567.002` on `100413` | **Mapping fix pending in XML:** matching `Invoke-WebRequest` to a Kali HTTP listener does not establish cloud-storage exfiltration; retain `T1059.001` for the generic rule and map the transfer stage separately based on channel behavior. |
+| 20 | Rule `100413` currently maps Invoke-WebRequest activity to T1567.002, although the documented HTTP endpoint is Kali-hosted rather than cloud storage. | **ATT&CK mapping correction pending in XML**: Retain T1059.001 for PowerShell activity. Map the Stage 11 transfer separately according to the verified communication channel and transfer outcome.|
 
 **Rule IDs and source of truth:** For executable detection logic, inspect the committed XML/Suricata files in the table at the top of this document. For test outcome, inspect the raw alert's `rule.id`, `full_log`, `data` fields and timestamp. See `docs/04` for dates and evidence provenance.
 
