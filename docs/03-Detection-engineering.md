@@ -403,11 +403,11 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100406` | 10 | Child of built-in `92302`, key `…\CurrentVersion\Run` or `RunOnce` | none | T1547.001 |
 | `100407` | 12 | Rule `100402` | ≥3 / 120s, `same_field` user | T1087 |
 | `100408` | 10 | Rule `60122` (event 4625) with `ipAddress` ≠ `-` | ≥5 / 60s, `same_field` `ipAddress`, `ignore 120` | T1110 |
-| `100410` | 13 | Windows Security Event 4624, matching built-in rule 92657, following a previous 100408 brute-force detection | if_matched_sid=100408, frequency=2, timeframe=200, same_field=win.eventdata.ipAddress. Configuration is syntactically within the documented frequency range, but the intended single-success detection sequence remains unvalidated. | T1110, T1078 |
+| `100410` | 13 | Windows Security Event 4624, matching built-in rule 92657, following a previous 100408 brute-force detection | if_matched_sid=100408, timeframe=200, same_field=win.eventdata.ipAddress. Frequency attribute removed to trigger on first success. Positive validation pending. |
 | `100411` | 14 | EID 10, `targetImage` ends with `lsass.exe`, `sourceImage` not in the full-path allow-list, `grantedAccess` in a memory-read mask list | none | T1003.001 |
 | `100416` | 15 | Child of `100411`, `callTrace` contains `dbghelp.dll`/`dbgcore.dll` or `UNKNOWN` | none | T1003.001 |
 | `100412` | 15 | Child of built-in `60002` (Security-channel base), `eventID = 1102` | none | T1070.001 |
-| `100413` | 9 | Child of built-in `60009`; event with PowerShell module-logging fields (`contextInfo` containing `Invoke-WebRequest`, plus `payload`) — **PowerShell Operational channel is configured; Module Logging, parent matching and alert generation are unverified** | none | T1059.001, T1567.002 |
+| `100413` | 9 | PowerShell Operational Event 4103, payload contains Invoke-WebRequest | Proposed parent 91801; field matching unvalidated | T1059.001 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
 #### `100400` — Shell spawned child process (level 5)
@@ -472,7 +472,7 @@ A matching sequence indicates suspicious authentication behavior. It does not in
 **Committed design (not confirmed operational):**
 
 ```xml
-<rule id="100410" level="13" frequency="2" timeframe="200">
+<rule id="100410" level="13" timeframe="200">
   <if_sid>92657</if_sid>
   <if_matched_sid>100408</if_matched_sid>
   <field name="win.system.eventID">^4624$</field>
@@ -490,7 +490,7 @@ A matching sequence indicates suspicious authentication behavior. It does not in
 
 if_matched_sid=100408: References the preceding brute-force detection.
 
-frequency=2, timeframe=200: Configured correlation threshold and 200-second window.
+timeframe=200: Configured 200-second correlation window. The frequency attribute has been removed to ensure the rule triggers immediately on the very first successful logon.
 
 same_field=win.eventdata.ipAddress: Correlates events using the same source IP.
 
@@ -500,7 +500,7 @@ Confirmed (2026-10-10): An SMB/NTLM test triggered 100408, followed by a success
 
 Configuration updated: The original parent 60106 was replaced with 92657. No positive 100410 alert has been preserved after this change.
 
-Frequency limitatioof one brute-force alert followed by one sucn: frequency=2 is supported by Wazuh (2–9999), but the intended sequence cessful logon has not been validated. Changing to frequency=1 is not a supported fix.
+**Frequency limitation**: The requirement is to detect exactly one successful logon after a brute-force alert. The previous configuration used frequency="2", which required two successful logons to trigger. The frequency attribute has now been removed to trigger on the first match.
 
 **Detection scope**: Depends on built-in rule 92657 and source-IP correlation. Matching IP addresses does not guarantee that the same account was targeted or compromised.
 
@@ -526,12 +526,12 @@ Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `
 
 100413 — PowerShell Invoke-WebRequest Activity (Level 9)
 
-Detection objective: Identify PowerShell Invoke-WebRequest activity through Module Logging (Event ID 4103), providing visibility into potentially suspicious HTTP transfers (T1059.001).
+Detection objective: Identify PowerShell Invoke-WebRequest execution through Module Logging (Event ID 4103), providing visibility into potentially suspicious HTTP activity (T1059.001).
 
-Proposed configuration — not yet deployed or validated:
-```xml=
+Proposed configuration:
+```xml
 <rule id="100413" level="9">
-  <if_sid>60009</if_sid>
+  <if_sid>91801</if_sid>
 
   <field name="win.system.channel" type="pcre2">^Microsoft-Windows-PowerShell/Operational$</field>
   <field name="win.system.eventID">^4103$</field>
@@ -544,25 +544,25 @@ Proposed configuration — not yet deployed or validated:
 </rule>
 ```
 **Detection logic:**
-Parent 60009: Wazuh's generic Windows informational-event rule, not a rule exclusive to Event ID 4104. Its use with PowerShell Module Logging is supported by Wazuh's published detection examples.
+Parent 91801: Wazuh's built-in PowerShell Operational channel rule. Replaces the previous generic informational-event parent 60009.
 
-Event 4103: Explicitly restricts matching to PowerShell Module Logging in the Operational channel.
+Event 4103: Restricts detection to PowerShell Module Logging.
 
-Payload matching: Searches decoded module-logging content for Invoke-WebRequest. Field availability and content must be confirmed against actual events.
+Payload matching: Identifies events containing Invoke-WebRequest in the decoded win.eventdata.payload field.
+
+MITRE T1059.001: Maps the detected activity to PowerShell execution, without assuming successful data exfiltration.
+
 
 **Validation and limitations:**
-The Windows Wazuh agent already collects the PowerShell Operational channel, but Module Logging activation, Event 4103 ingestion, and positive rule matching remain unverified.
+The Windows Wazuh agent collects the PowerShell Operational channel, but Module Logging activation and Event 4103 ingestion remain unverified.
 
-PowerShell Module Logging may distribute command and parameter information across multiple records; the proposed rule only matches individual events containing the target string in payload.
+Parent 91801 and the payload field must be validated against actual decoded Event 4103 records. Module Logging may distribute command and parameter details across multiple events.
 
-Detection of Invoke-WebRequest does not independently establish data exfiltration. The previous T1567.002 cloud-storage mapping is not applicable to the lab's Kali-hosted HTTP endpoint.
+The rule identifies web-request activity, not file-transfer success or confirmed exfiltration.
 
-The Stage 11 script uses `Invoke-WebRequest` `-Method Post` `-InFile`, but no raw 100413 alert has been preserved.
+No positive 100413 alert has been preserved. The proposed configuration must be deployed and tested before being marked operational.
 
-**Next validation**: Confirm local Event 4103 generation, inspect actual contextInfo/payload values, verify the parent rule through wazuh-logtest, and preserve a raw 100413 alert before claiming detection success.
-
-**Status**: Rule revision proposed — PowerShell telemetry and positive detection pending validation.
-
+**Status**: Rule revision proposed — Positive detection pending validation.
 #### `100414` — PowerShell / certutil on web ports (level 12)
 EID 3 where the image is `powershell.exe` or `certutil.exe` and the port is 80 or 443. Standard web ports blend into normal traffic; a scripting engine or LOLBin using them is the signal (T1041, T1105). Expect some noise from legitimate scripts; baseline and exclude known destinations.
 
@@ -654,13 +654,13 @@ These items distinguish **a change committed in a configuration file** from **a 
 | 2 | Built-in / custom rule interaction for `100406`, `100412`, `100410` | `100406` (parent `92302`) and `100412` (parent `60002`) were confirmed with new raw alerts. `100410` parent is **now `92657`**, but positive correlation after this edit remains **unvalidated**. |
 | 3 | Rule `100401` previously depended on parent `100400` | **Configuration fixed:** independent Sysmon EID 1 matching and broader encoded-switch regex. Historical evidence predates some revisions; verify any new changes independently. |
 | 4 | Suricata sids `1000010`/`1000011` previously lacked Wazuh wrappers | **Configuration fixed:** rules `100308` and `100309` are committed. |
-| 5 | 	Rule 100410 uses `if_matched_sid=100408` with frequency="2" and timeframe="200". Although frequency=2 is within Wazuh's documented supported range, the correlation has not been demonstrated to trigger on one brute-force detection followed by a single successful authentication. | Detection-logic limitation — validation pending. Keep the implemented correlation separate from its intended behavior. Do not change frequency to 1, which is outside Wazuh's documented supported range. Validate rule loading, source-IP matching, and the exact event sequence. Redesign the detection if the existing configuration cannot satisfy the one-success authentication use case. Preserve raw positive evidence before marking rule 100410 as operational. |
+| 5 | 	Rule 100410 previously used frequency="2", which incorrectly required two successful authentications to trigger instead of one. | **Configuration fixed**: The frequency attribute has been removed. By combining if_matched_sid and timeframe without frequency, Wazuh will now correctly trigger on the very first successful authentication event. Positive correlation validation via logtest is still pending. |
 | 6 | Suricata sid `1000006` previously flooded alerts | **Configuration fixed:** `threshold:type limit, track by_dst, count 1, seconds 60` is committed. |
 | 7 | Suricata sid `1000005` previously used tactic `TA0043` for T1046 | **Configuration fixed:** current `local.rules` uses `TA0007` (Discovery). |
 | 8 | Some XML `<field>` regular expressions span multiple lines | **Pending controlled test:** whitespace/line-break handling should be checked with actual decoded events, especially rules `100403`, `100405`, `100411`; do not assume every expression is normalized. |
 | 9 | Windows agent configuration previously monitored Suricata `eve.json` repeatedly | **Configuration fixed:** one `localfile` declaration remains. |
 | 10 | pfSense ICMP/TCP-burst noise | **Configuration fixed:** `100200` is low level with `no_log`; `100140` is restricted to administrative TCP destination ports. Historical UDP/loopback evidence comes from an earlier rule revision. |
-| 11 | Rule `100413` uses generic informational-event parent `60009` to inspect PowerShell Module Logging fields. The parent is not restricted to Event 4104, but the current rule lacks an explicit Event 4103 filter, and its contextInfo/payload conditions have not been validated. | **Rule refinement proposed / validation pending**: Restrict matching to PowerShell Operational Event 4103, verify decoded field contents, and test the actual rule path. Stage 11 uses Invoke-WebRequest, but no positive 100413 alert is preserved. |
+| 11 | Rule 100413 previously used generic parent 60009 without explicitly filtering Event 4103. | **Revision proposed / validation pending**: Use PowerShell Operational parent 91801, restrict matching to Event 4103, and verify the decoded payload field. Positive detection remains unconfirmed. |
 | 12 | Suricata sid `1000011` matches only a limited URI extension list | **Unresolved tuning:** `.com` and other extensions, and URIs with query parameters, are not covered. Extend only if the intended scope requires it; validate false positives. |
 | 13 | Rule `100400` formerly had an invalid field substitution in its description | **Fixed / confirmed:** corrected `$(win.eventdata.user)` in an Oct 13 raw alert. |
 | 14 | Rule `100401` still contains a stray quotation mark in its description | **Cosmetic XML fix pending:** normalize `CMD:` when modifying the rule. |
@@ -669,7 +669,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 | 17 | Rule `100411` full-path allow-list and escaped Windows paths | **Filter not proved:** compare decoded `sourceImage` to the regex with `wazuh-logtest`; the Defender event was suppressed by the unmatched access mask `0x101000`, not proof that the allow-list itself works. |
 | 18 | Rule `100400` can shadow `100402` for `net.exe` / `net1.exe` started from a shell | **Unresolved precedence/tuning:** either exclude `net`/`net1` from the generic rule or prove the specific rule wins after the change; preserve a fresh raw test. |
 | 19 | Suricata wrapper `<field name="alert.signature_id">` uses unanchored numeric patterns | **Optional hardening:** prefer `^SID$` for each exact SID to avoid accidental partial matches. |
-| 20 | Rule `100413` currently maps Invoke-WebRequest activity to T1567.002, although the documented HTTP endpoint is Kali-hosted rather than cloud storage. | **ATT&CK mapping correction pending in XML**: Retain T1059.001 for PowerShell activity. Map the Stage 11 transfer separately according to the verified communication channel and transfer outcome.|
+| 20 | Rule 100413 previously mapped PowerShell web-request activity to T1567.002 (cloud-storage exfiltration). | **Mapping correction proposed**: Retain T1059.001 for the PowerShell detection. Assess exfiltration techniques separately based on the actual transfer method and supporting evidence.|
 
 **Rule IDs and source of truth:** For executable detection logic, inspect the committed XML/Suricata files in the table at the top of this document. For test outcome, inspect the raw alert's `rule.id`, `full_log`, `data` fields and timestamp. See `docs/04` for dates and evidence provenance.
 
@@ -688,7 +688,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 
 ```xml
 <!-- Current 100410 parent/threshold; still awaiting compatibility and end-to-end checks -->
-<rule id="100410" level="13" frequency="2" timeframe="200">
+<rule id="100410" level="13" timeframe="200">
   <if_sid>92657</if_sid>
   <if_matched_sid>100408</if_matched_sid>
   <!-- remaining conditions omitted; full rule lives in sysmon_rules.xml -->
