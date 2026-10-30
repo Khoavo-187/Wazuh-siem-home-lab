@@ -524,8 +524,6 @@ Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `
 
 #### `100413` — PowerShell `Invoke-WebRequest` Activity (Level 9)
 
-100413 — PowerShell Invoke-WebRequest Activity (Level 9)
-
 Detection objective: Identify PowerShell Invoke-WebRequest execution through Module Logging (Event ID 4103), providing visibility into potentially suspicious HTTP activity (T1059.001).
 
 Proposed configuration:
@@ -654,7 +652,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 | 2 | Built-in / custom rule interaction for `100406`, `100412`, `100410` | `100406` (parent `92302`) and `100412` (parent `60002`) were confirmed with new raw alerts. `100410` parent is **now `92657`**, but positive correlation after this edit remains **unvalidated**. |
 | 3 | Rule `100401` previously depended on parent `100400` | **Configuration fixed:** independent Sysmon EID 1 matching and broader encoded-switch regex. Historical evidence predates some revisions; verify any new changes independently. |
 | 4 | Suricata sids `1000010`/`1000011` previously lacked Wazuh wrappers | **Configuration fixed:** rules `100308` and `100309` are committed. |
-| 5 | 	Rule 100410 previously used frequency="2", which incorrectly required two successful authentications to trigger instead of one. | **Configuration fixed**: The frequency attribute has been removed. By combining if_matched_sid and timeframe without frequency, Wazuh will now correctly trigger on the very first successful authentication event. Positive correlation validation via logtest is still pending. |
+| 5 | 	Rule 100410 previously used frequency="2", which incorrectly required two successful authentications to trigger instead of one. | **Configuration revised — Validation pending.**: The frequency attribute has been removed to evaluate single-success correlation behavior. However, the interaction between if_matched_sid, timeframe, and same_field has not been validated against the deployed Wazuh rule engine. A successful Event 4624 following one 100408 alert must be tested before this implementation can be considered operational.|
 | 6 | Suricata sid `1000006` previously flooded alerts | **Configuration fixed:** `threshold:type limit, track by_dst, count 1, seconds 60` is committed. |
 | 7 | Suricata sid `1000005` previously used tactic `TA0043` for T1046 | **Configuration fixed:** current `local.rules` uses `TA0007` (Discovery). |
 | 8 | Some XML `<field>` regular expressions span multiple lines | **Pending controlled test:** whitespace/line-break handling should be checked with actual decoded events, especially rules `100403`, `100405`, `100411`; do not assume every expression is normalized. |
