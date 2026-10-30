@@ -500,7 +500,7 @@ Confirmed (2026-10-10): An SMB/NTLM test triggered 100408, followed by a success
 
 Configuration updated: The original parent 60106 was replaced with 92657. No positive 100410 alert has been preserved after this change.
 
-**Frequency limitation**: The requirement is to detect exactly one successful logon after a brute-force alert. The previous configuration used frequency="2", which required two successful logons to trigger. The frequency attribute has now been removed to trigger on the first match.
+**Frequency limitation**: The requirement is to detect exactly one successful logon after a brute-force alert. The previous configuration used frequency="2", which required two successful logons to trigger. The frequency attribute was removed to evaluate single-success correlation behavior. The intended detection remains unvalidated and requires confirmation against the deployed Wazuh rule engine.
 
 **Detection scope**: Depends on built-in rule 92657 and source-IP correlation. Matching IP addresses does not guarantee that the same account was targeted or compromised.
 
