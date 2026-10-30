@@ -193,7 +193,7 @@
   <!-- ========================================================= -->
   <!-- 10. Successful login after failed-login burst            -->
   <!-- ========================================================= -->
-  <rule id="100410" level="13" frequency="2" timeframe="200">
+  <rule id="100410" level="13" timeframe="200">
     <if_sid>92657</if_sid>
     <if_matched_sid>100408</if_matched_sid>
 
@@ -287,15 +287,17 @@
   <!-- 13. DATA exfiltration  -->
   <!-- ========================================================= -->
   <rule id="100413" level="9">
-    <if_sid>60009</if_sid>
-    <field name="win.eventdata.contextInfo" type="pcre2">(?i)Invoke-WebRequest</field>
-    <field name="win.eventdata.payload" type="pcre2">(?i)(Uri|http|Post|InFile|C:\\)</field>
-    <description>Possible Powershell data exfiltration detected .</description>
-    <mitre>
-      <id>T1059.001</id>
-      <id>T1567.002</id>
-    </mitre>
-  </rule>
+  <if_sid>91801</if_sid>
+
+  <field name="win.system.channel" type="pcre2">^Microsoft-Windows-PowerShell/Operational$</field>
+  <field name="win.system.eventID">^4103$</field>
+  <field name="win.eventdata.payload" type="pcre2">(?i)Invoke-WebRequest</field>
+
+  <description>PowerShell: Invoke-WebRequest activity detected - review for suspicious HTTP transfer</description>
+
+  <mitre><id>T1059.001</id></mitre>
+  <group>powershell,web_request,suspicious_activity,</group>
+</rule>
 
 
   <!-- ========================================================= -->
