@@ -2336,7 +2336,7 @@ default-rule-path: C:\\Program Files\\Suricata\\rules\\
 
 rule-files:
  - local.rules
- - emerging-all-fixed.rules
+# - emerging-all-fixed.rules # rule configuration (download outsource code)
 # - decoder-events.rules  #available in suricata sources under rules dir
 # - stream-events.rules   #available in suricata sources under rules dir
 # - http-events.rules     #available in suricata sources under rules dir
