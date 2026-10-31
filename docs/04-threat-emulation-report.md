@@ -39,7 +39,7 @@ A numbered 12-stage workflow (**Stage 0 preparation; Stages 1–11 from reconnai
 
 1. **Multiple parts of the workflow are observable across four telemetry layers**: network (Suricata), firewall (pfSense), host (Sysmon and Windows Security log), and file/reputation (FIM and VirusTotal). This does **not** mean that the full chain, especially Stage 1 and Stage 11, has been proven end-to-end.
 2. **Rule tuning and re-testing improved detection coverage across Stages 5, 7 and 10.** The October 2026 re-tests confirmed custom alerts for `100402`/`100407`/`100400` (Stage 5), `100406` (Stage 7), and `100412` (Stage 10). Stage 5 benefited from expanded matching scope, while Stage 7 successfully chained `100406` under built-in rule `92302`. Stage 10 produced two historical `100412` alerts on October 13; however, the rule has since been revised to use built-in parent `63103`, and this latest configuration remains pending validation. Stage 3's custom correlation rule `100410` also remains unverified.
-3. Stage 3 has a historical detection and a newer unvalidated correlation configuration. The 2026-10-10 SMB retest produced a genuine `100408` alert followed by a successful NTLM network logon classified as built-in `92657`, not custom `100410`. The currently committed sysmon_rules.xml has since changed to `<if_sid>92657</if_sid>` with `<if_matched_sid>100408</if_matched_sid`> and `timeframe="200"` (the frequency attribute was completely removed to trigger on the very first successful logon). Neither successful loading nor correct historical matching has been demonstrated after this revision, and it must be reviewed with a manager-side syntax/behavior test.
+3. **Stage 3 confirmed the authentication sequence, but custom correlation remains unvalidated.** The October 10, 2026 SMB/NTLM re-test produced a genuine `100408` brute-force alert followed approximately 18 seconds later by a successful Windows logon (Event `4624`) classified under built-in rule `92657`. No custom `100410` alert was preserved. The proposed revision of `100410` uses `<if_sid>92657</if_sid>`, `<if_matched_sid>100408</if_matched_sid>`, `frequency="2"`, and `timeframe="200"` with source-IP correlation. However, the effective counting behavior and 200-second correlation window have not been validated on the deployed Wazuh Manager. A positive test with exactly one `100408` alert followed by one successful logon, together with negative tests, is required before the rule can be considered operational.
 4. **Stage 8b captured a benign control event, not a true positive.** `procdump.exe` is not staged on the victim, so the planned LSASS-dump attack has not actually been run. What was captured instead is Windows Defender's own real-time-protection engine (`MsMpEng.exe`) touching LSASS memory during a routine scan — the built-in rule `92900` flagged this as "possible credential dump" (a false positive), while the custom `100411` stayed silent; the access mask (`0x101000`) is not one the rule looks for. The allow-list is not proven by this event (the exported path has doubled backslashes that the allow-list regex does not expect), so this shows that telemetry reaches the rule engine, not that the rule can catch a real dump attempt.
 5. **Stage 1 and Stage 11 remain evidence gaps.** Stage 1’s pfSense alert is unrelated loopback DNS; a WAN-side retest has no clean correlated evidence. Stage 11 has a newer HTTP POST script but no preserved file-receipt/integrity evidence and no raw alert from `100413`. Rule `100410` and the LSASS positive case also remain pending validation.
 6. **Log clearing did not blind the SOC**: The historical Stage 10 re-test demonstrated that Wazuh recorded custom level-15 alerts for Security audit-log clearing. The latest parent-SID revision requires separate validation before the current configuration is considered confirmed.
@@ -311,55 +311,145 @@ See [`threat-emulation/evidence-logs/stage02-rule-100408-bruteforce-retest.json`
 ### Stage 3 — Successful Access (T1078)
 
 ```bash
-# Kali — log in with the cracked credentials
+# Kali — attempt authentication using the recovered credentials
 ssh lenovo@192.168.60.1
 ```
 
 ![Figure 5 — Stage 3 evidence screenshot](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/Stage3_access.png)
 
-*Figure 5 — Stage 3 evidence screenshot (original run).*
+*Figure 5 — Stage 3 evidence screenshot from the original run.*
 
-**First attempt (2026-08-28) — alert observed**
+**First attempt (2026-08-28) — Account lockout observed**
 
 | Field | Value |
 |---|---|
-| Rule | `60115` — user account locked out, level 9 |
-| Event | Windows `4740` for account `LENOVO` |
-| Time | 05:46:44 (alert time) — within the same second as the Stage 2 failed logon |
+| Rule | `60115` — User account locked out, level 9 |
+| Event | Windows Security Event `4740` for account `LENOVO` |
+| Time | 05:46:44 (alert time), within the same second as the Stage 2 failed logon |
 | Mapping | T1110, T1531 |
 
 **Analysis — first attempt**
 
-- **The evidence does not prove a successful login.** Event `4740` shows that the brute force locked the account, which is an impact of Stage 2. The goal of this stage, valid-account use, was not demonstrated.
-- A locked account would also have blocked the cracked credentials, so the lockout likely prevented this stage from succeeding at that moment.
+- **The preserved evidence does not demonstrate successful authentication.** Event `4740` confirms an account lockout associated with the preceding failed-logon activity, rather than successful use of recovered credentials.
+- The account lockout could have prevented further authentication attempts during this period. No corresponding successful Event `4624` was preserved for this original attempt.
+- Therefore, the Stage 3 objective was not confirmed during the August run.
 
-**2026-10-10 re-test — successful logon captured**
+**2026-10-10 re-test — Successful SMB authentication confirmed**
 
 ```bash
-# Kali — connect with the credentials Hydra recovered
+# Kali — authenticate using the credentials recovered during Stage 2
 smbclient //192.168.60.1 -U 'Lenovo'
 ```
 
-Following the account unlock and the Stage 2 re-test above (Hydra against SMB, then `smbclient` to confirm the cracked credentials), a genuine successful logon appeared:
+Following the account unlock and the Stage 2 SMB brute-force re-test, a successful Windows authentication event was recorded.
 
 | Field | Value |
 |---|---|
-| Rule | `92657` — built-in "Successful Remote Logon Detected", level 6 |
-| Event | Windows `4624` for account `LENOVO` |
-| Time | 2026-10-10 17:38:11 (18 seconds after the `100408` alert in Stage 2) |
-| Key fields | `targetUserName: LENOVO`, `ipAddress: 192.168.60.135`, `logonType: 3`, `authenticationPackageName: NTLM`, `workstationName: KALI` |
-| Rule's own mapping | T1550.002 (Pass the Hash), T1078.002 (Domain Accounts), T1021.001 (Remote Desktop Protocol) — **the T1021.001/RDP tag is the same built-in boilerplate issue noted below; the real technique here is T1021.002 (SMB/Windows Admin Shares)** |
+| Rule | `92657` — Built-in "Successful Remote Logon Detected", level 6 |
+| Event | Windows Security Event `4624` for account `LENOVO` |
+| Time | 2026-10-10 17:38:11 UTC, approximately 18 seconds after the `100408` alert |
+| Source IP | `192.168.60.135` |
+| Target account | `LENOVO` |
+| Logon type | `3` — Network |
+| Authentication package | `NTLM` |
+| Workstation | `KALI` |
+| Built-in MITRE mapping | T1550.002, T1078.002, T1021.001 — inherited from rule `92657`; these mappings should not be treated as confirmation of pass-the-hash, domain-account abuse, or RDP activity |
 
-See [`threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json). The same Discover session also showed `67028` ("Special privileges assigned to new logon", level 3) immediately after, and the `60122` failed-logon burst immediately before — the same sequence as the raw alerts (no screenshot captured for this specific view).
+**Evidence:** [`stage03-rule-92657-successful-logon.json`](../threat-emulation/evidence-logs/stage03-rule-92657-successful-logon.json)
+
+The same Discover session also showed rule `67028` (special privileges assigned to a new logon) and preceding failed-logon activity. However, no raw custom `100410` alert was preserved for this re-test.
 
 **Analysis — re-test**
 
-- **The goal of this stage is now demonstrated**: a real `4624` following a real failed-logon burst, 18 seconds apart, same `targetUserName` and `ipAddress` as Stage 2's `100408`.
-- **Built-in rule, not the custom one — the same sibling-precedence pattern seen elsewhere in the project.** The **then-current** custom `100410` (`if_sid 60106`, `if_matched_sid 100408`) did not appear; `92657` did. `92657` is very likely another child of `60106` (the base "logon success" rule). This is the same mechanism already confirmed and fixed for `100406`/`92302` and `100412`/`63103` (`docs/03`, §3.3 and §5, item 2) — The **current** XML now chains `100410` under `92657`; the correction was applied **after** this historical retest and has no confirmed positive result yet.
-- **Confirmed: this is SMB, not SSH and not RDP.** `92657`'s built-in description guesses "Possible RDP connection" — that wording is generic boilerplate Wazuh attaches to any NTLM `logonType 3` network logon, and it is misleading here: the access was `smbclient`, not RDP. The `logonType 3`/NTLM/`NtLmSsp` fields are the standard SMB signature, matching Stage 2's re-test above. This stage's *first* attempt (SSH, `logonType 8`) and this re-test (SMB, `logonType 3`) are two different access methods proving the same underlying idea — a successful logon following a credential-stuffing burst — over two different services.
-- Because `ipAddress` was populated correctly here, the earlier concern (Stage 2) that SSH logons might never populate it, and so `100408`/`100410`'s `same_field ipAddress` correlation could never match, does not apply to this run — the correlation condition itself is satisfiable; only the sibling-rule precedence stopped `100410` from being the one reported.
+- **Successful authentication was confirmed.** Windows Event `4624` appeared approximately 18 seconds after the custom `100408` brute-force alert. Both preserved alerts contain the same source IP (`192.168.60.135`) and target account (`LENOVO`), demonstrating the intended authentication sequence.
+- **The successful logon was detected by built-in rule `92657`, not custom rule `100410`.** The historical `100410` configuration referenced built-in rule `60106`. A rule-parent dependency or rule-selection interaction may have contributed to the missing custom alert, but the available evidence does not establish sibling precedence as the sole cause.
+- **The re-test used SMB/NTLM, not SSH or RDP.** The observed `logonType=3`, `authenticationPackageName=NTLM`, and `workstationName=KALI` are consistent with the documented `smbclient` authentication attempt. The RDP-related description and MITRE mapping inherited from `92657` do not establish that RDP was used.
+- **Source-IP correlation is feasible for the observed SMB events.** Both alerts contain the same `win.eventdata.ipAddress` value. However, this does not prove that Wazuh's `same_field` condition successfully correlates them. The earlier SSH scenario remains a separate coverage limitation.
 
-**Verdict: ⚠️ Detected, but by a built-in rule (`92657`)** — the one remaining open instance of the sibling-precedence pattern (`docs/03`, §5, item 2); custom `100410` not yet proven.
+**Detection engineering revision — Rule `100410`**
+
+The custom rule has subsequently been revised to use built-in rule `92657` as its current-event parent and custom rule `100408` as its historical correlation reference.
+
+The proposed configuration introduces an explicit frequency threshold:
+
+```xml
+<rule id="100410" level="13" frequency="2" timeframe="200">
+  <if_sid>92657</if_sid>
+  <if_matched_sid>100408</if_matched_sid>
+
+  <field name="win.system.eventID">^4624$</field>
+  <field name="win.eventdata.ipAddress" type="pcre2">^(?!-$).+</field>
+
+  <same_field>win.eventdata.ipAddress</same_field>
+
+  <description>
+    CRITICAL: Successful authentication associated with
+    previous brute-force activity from $(win.eventdata.ipAddress) -
+    possible compromised credentials
+  </description>
+
+  <mitre>
+    <id>T1110</id>
+    <id>T1078</id>
+  </mitre>
+
+  <group>authentication_success,possible_compromise,</group>
+</rule>
+```
+
+**Intended correlation logic**
+
+```text
+Windows Security Event 4625
+           |
+           v
+Built-in rule 60122
+           |
+           v
+Custom rule 100408
+(Brute-force alert confirmed)
+           |
+           | Same source IP
+           | Intended window: 200 seconds
+           v
+Windows Security Event 4624
+           |
+           v
+Built-in rule 92657
+(Successful logon confirmed)
+           |
+           v
+Custom rule 100410
+(Correlation pending validation)
+```
+
+**Configuration and validation limitations**
+
+- **`frequency="2"`:** Restores an explicit correlation threshold. Its effective counting behavior when combining historical rule `100408` with current-event rule `92657` remains unverified.
+- **`timeframe="200"`:** Defines the intended correlation window, but correct timeout enforcement has not been demonstrated.
+- **`same_field`:** Intended to correlate events using `win.eventdata.ipAddress`; matching IP values in historical alerts do not independently establish successful Wazuh correlation.
+- **Detection scope:** The current design depends on successful authentication events classified under built-in rule `92657`. Other authentication paths require separate validation.
+- **Account correlation:** The rule compares source IP addresses but does not explicitly correlate target usernames. Therefore, a matching IP alone cannot establish that the same account was compromised.
+
+**Required validation**
+
+The revised configuration must be evaluated using `wazuh-analysisd -t` and `wazuh-logtest`, followed by a controlled SMB/NTLM re-test if appropriate.
+
+The minimum acceptance criteria are:
+
+| Test | Scenario | Expected result |
+|---|---|---|
+| T1 | One `100408` alert followed by one successful `4624`, same IP, within 200 seconds | Custom `100410` triggers |
+| T2 | Brute-force alert and successful logon from different IPs | No `100410` |
+| T3 | Matching events separated by more than 200 seconds | No `100410` |
+| T4 | Successful `4624` without a preceding `100408` | No `100410` |
+| T5 | Multiple historical brute-force alerts followed by one successful logon | Determine actual frequency-counting behavior |
+
+These are intended acceptance criteria, not completed test results. If the revised XML does not satisfy the single-success requirement, its correlation logic must be redesigned rather than treated as validated.
+
+**Verdict: ✅ Successful SMB/NTLM authentication confirmed via built-in rule `92657`; ⚠️ custom correlation rule `100410` pending validation.**
+
+The October 10 re-test successfully demonstrated a Windows authentication event following confirmed brute-force activity from the same source IP. However, no positive custom `100410` alert has been preserved. The revised configuration requires independent validation before Stage 3 can be marked as fully detected by its intended custom correlation rule.
 
 ---
 
@@ -849,7 +939,7 @@ Priority is based on **current committed scripts/configuration**, while historic
 
 | Priority | Stage | Current gap | Action | Pass criteria |
 |---|---|---|---|---|
-| P1 | 3 | `100410` has been reparented to `92657` in XML, but the removal of the frequency attribute and mixed historical/current correlation behavior have not been validated | Check `wazuh-analysisd -t` and confirm that the correlation triggers correctly without a frequency threshold; inspect built-in `92657`, then retest failed SMB logons → exactly one successful 4624 from the same source | A new raw `100410` alert from the **current rule revision**, or an explicit failed test with decoded fields |
+| P1 | 3 | Rule `100410` now uses `frequency="2"` and `timeframe="200"`, but its single-success correlation behavior remains unverified. | Validate rule loading and test the `100408 → 4624` sequence, same-IP and different-IP cases, and the 200-second timeout. | A positive raw `100410` alert from the revised configuration, together with negative test results, or documented evidence that redesign is required. |
 | P1 | 11 | Windows uses `Invoke-WebRequest` to POST a ZIP; committed Kali stock `http.server` does not store POST bodies; no raw Stage 11 alert | Provide a reproducible POST receiver and preserve a received ZIP/hash match; separately verify Windows 4103 and Wazuh `100413` | Matching Windows/Kali SHA256 plus original raw `100413` alert; report transport/detection results independently |
 | P1 | 1 | Same-segment Kali→Windows traffic bypasses pfSense; historical `100140` event is unrelated loopback DNS | Retest endpoint Suricata SID `1000002`/Wazuh `100300`; test pfSense with a distinct WAN-side probe to pfSense itself (without assuming WAN→LAN port-forward) | Raw alert matches actual attack source, target, port and time |
 | P1 | 8b | Sysmon LSASS EID 10 exists, but `100411`/`100416` have no positive validation and allow-list behavior is uncertain | Start with non-destructive `wazuh-logtest` synthetic positive/negative controls; if using memory-access tools, prefer an isolated disposable VM rather than the physical host | Confirm rule matching and acceptable false positives; do not claim real dumping detection without evidence |
