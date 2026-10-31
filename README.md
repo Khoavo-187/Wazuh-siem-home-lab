@@ -476,7 +476,7 @@ Examples:
 100410 → Successful login after failed-login burst
 100411 → Suspicious LSASS access
 100412 → Security log cleared
-100413 → Suspicious outbound connection on port 4445
+100413 → PowerShell Invoke-WebRequest activity (Event 4103; pending validation)
 100414 → Suspicious LOLBin traffic on web ports
 100415 → LOLBin with download/decode arguments
 100416 → LSASS access with memory-dump call trace
@@ -534,7 +534,7 @@ The current validation results should be interpreted carefully.
 | 8 | Command & Control | ✅ Network detection observed; current rule revision requires re-test |
 | 8b | LSASS Access | ⚠️ `procdump` not yet staged — only a false positive captured so far (Windows Defender's own scan, correctly ignored by custom rule `100411`, flagged by built-in `92900`) |
 | 9 | File Lifecycle | ⚠️ Screenshot evidence exists; raw JSON should be preserved |
-| 10 | Anti-Forensics | ✅ Custom rule `100412` confirmed firing twice (2026-10-13 re-test), no built-in `63103` observed alongside |
+| 10 | Anti-Forensics | ✅ Custom rule `100412` confirmed firing twice (2026-10-13 re-test), Current parent 63103 pending re-validation. |
 | 11 | Exfiltration | ⚠️ Detection and raw evidence still need validation |
 
 Full stage-by-stage analysis, raw alerts, and screenshots are in [`docs/04-threat-emulation-report.md`](docs/04-threat-emulation-report.md). The project intentionally documents detection gaps rather than treating every planned rule as already verified.
@@ -873,8 +873,7 @@ still requires a dedicated validation run.
 As of the 2026-10-13 re-test, this is down to two rules:
 
 ```text
-100410   → built-in 92657 still wins; the custom rule needs the same if_sid fix
-          applied to 100406 and 100412, plus a frequency regression reverted
+100410   → 100410 has been reparented to built-in rule 92657 and now uses frequency="2", timeframe="200". The revised correlation behavior remains pending validation.
 100411   → not yet tested with a true positive (procdump is not staged);
           confirmed correctly silent on a Windows Defender false positive
 ```
