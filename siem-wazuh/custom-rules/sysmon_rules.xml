@@ -269,11 +269,10 @@
   <!-- 12. Windows Security Event Log cleared - Event ID 1102  -->
   <!-- ========================================================= -->
   <rule id="100412" level="15">
-  <if_sid>60002</if_sid>
-
+  <if_sid>63103</if_sid>
   <field name="win.system.eventID">^1102$</field>
 
-  <description>CRITICAL: Windows Security Event Log cleared - Host: $(win.system.computer)</description>
+  <description>CRITICAL: Windows Security audit log cleared - Host: $(win.system.computer)</description>
 
   <mitre>
     <id>T1070.001</id>
