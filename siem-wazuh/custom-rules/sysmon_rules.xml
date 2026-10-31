@@ -191,33 +191,42 @@
 
 
   <!-- ========================================================= -->
-  <!-- 10. Successful login after failed-login burst            -->
-  <!-- ========================================================= -->
-  <rule id="100410" level="13" timeframe="200">
-    <if_sid>92657</if_sid>
-    <if_matched_sid>100408</if_matched_sid>
+<!-- 10. Successful authentication after brute-force activity   -->
+<!--     Windows Security Event 4624                             -->
+<!--     Correlation behavior requires validation                -->
+<!-- ========================================================= -->
 
-    <field name="win.system.eventID">^4624$</field>
+<rule id="100410" level="13" frequency="2" timeframe="200">
 
-    <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">
-      ^-$
-    </field>
+  <!-- Built-in rule observed for successful SMB/NTLM logon -->
+  <if_sid>92657</if_sid>
 
-    <same_field>win.eventdata.ipAddress</same_field>
+  <!-- Previously detected brute-force activity -->
+  <if_matched_sid>100408</if_matched_sid>
 
-    <description>
-      CRITICAL: Successful login after multiple failed logon attempts
-      from $(win.eventdata.ipAddress) -
-      possible compromised credentials
-    </description>
+  <!-- Successful Windows authentication -->
+  <field name="win.system.eventID">^4624$</field>
 
-    <mitre>
-      <id>T1110</id>
-      <id>T1078</id>
-    </mitre>
+  <!-- Exclude events with missing/placeholder source IP -->
+  <field name="win.eventdata.ipAddress" type="pcre2">^(?!-$).+</field>
 
-    <group>authentication_success,possible_compromise</group>
-  </rule>
+  <!-- Correlate events by source IP -->
+  <same_field>win.eventdata.ipAddress</same_field>
+
+  <description>
+    CRITICAL: Successful authentication associated with
+    previous brute-force activity from $(win.eventdata.ipAddress) -
+    possible compromised credentials
+  </description>
+
+  <mitre>
+    <id>T1110</id>
+    <id>T1078</id>
+  </mitre>
+
+  <group>authentication_success,possible_compromise,</group>
+
+</rule>
 
 
   <!-- ========================================================= -->
