@@ -407,7 +407,7 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100411` | 14 | EID 10, `targetImage` ends with `lsass.exe`, `sourceImage` not in the full-path allow-list, `grantedAccess` in a memory-read mask list | none | T1003.001 |
 | `100416` | 15 | Child of `100411`, `callTrace` contains `dbghelp.dll`/`dbgcore.dll` or `UNKNOWN` | none | T1003.001 |
 | `100412` | 15 | Windows Security Event `1102` — audit log cleared | Child of built-in `63103`; revised parent pending validation | T1070.001 |
-| `100413` | 9 | PowerShell Operational Event 4103, payload contains Invoke-WebRequest | Proposed parent 91801; field matching unvalidated | T1059.001 |
+| `100413` | 9 | PowerShell Operational Event 4103, payload contains Invoke-WebRequest | Committed parent 91801; positive validation pending | T1059.001 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
 #### `100400` — Shell spawned child process (level 5)
@@ -430,7 +430,11 @@ EID 1 where `image` ends with `whoami`, `systeminfo`, `tasklist`, `nltest`, `net
 
 **Scope widened, 2026-10-13.** Originally missed `net.exe`/`net1.exe`/`arp.exe` (the account-discovery and network-neighbour commands actually run in the Stage 5 emulation) — this was a scope gap, not a precedence issue (unlike `100406`/`100410`/`100412` above). `net.exe`/`net1.exe` are now confirmed in the pattern via a raw-alert re-test (`docs/04`, Stage 5). **Confirmed absent**: `arp.exe` is not in the pattern (current rule XML reviewed directly) — in the re-test it only triggered the generic `100400` ("Shell spawned child process"), not `100402`. Add `arp` to the pattern if parity with `net`/`net1` is wanted; one token.
 
-**Precedence caveat (verify).** One event produces one alert and Wazuh stops at the first matching sibling. In the live XML `100400` comes before `100402` and its exclusion list does **not** contain `net`/`net1`, so a `net`/`net1` process started from PowerShell, `cmd` or `net.exe` should be reported as `100400`, not `100402`, and `100407` would not count it. The 2026-10-13 alerts (net/net1 → `100402`) predate the current exclusion list. Either add `net` and `net1` to `100400`'s exclusion, or place `100402` before `100400`, then re-run Stage 5 and confirm with `wazuh-logtest`.
+**Rule precedence and validation status (pending re-test).** The current `100400` exclusion list includes `net.exe` and `net1.exe`, which are also explicitly matched by the more specific discovery rule `100402`. This configuration is intended to prevent the generic shell-child detection (`100400`) from taking precedence over `100402`, allowing qualifying discovery events to contribute to the `100407` reconnaissance correlation.
+
+Historical alerts from October 13, 2026, confirm that `net.exe` and `net1.exe` were detected by `100402`. However, these alerts predate the latest exclusion-list changes and therefore do not validate the currently committed configuration.
+
+**Status: Configuration updated — Regression testing pending.** The revised rule interaction must be verified using `wazuh-logtest` and a controlled Stage 5 re-test. Successful validation requires `net.exe`/`net1.exe` events to match `100402` rather than `100400`, with qualifying events contributing to the `100407` correlation.
 
 #### `100403` — LOLBin download/decode (level 8)
 EID 1 for `certutil.exe` or `bitsadmin.exe`, both able to fetch or decode files (T1105). The rule does not inspect arguments, so legitimate certificate operations also match — kept deliberately low-fidelity as a base signal; `100415` below adds the high-fidelity child.
@@ -459,7 +463,7 @@ Correlation on rule `60122` (failed logon, event 4625): ≥5 failures from the s
 
 **Detection objective:** Identify a successful Windows authentication event associated with previously detected brute-force activity from the same source IP address.
 
-**Current proposed configuration:**
+**Current committed configuration — pending validation**
 
 ```xml
 <rule id="100410" level="13" frequency="2" timeframe="200">
@@ -573,7 +577,7 @@ The current revision changes the parent to 63103, but no positive alert has been
 
 Detection objective: Identify PowerShell Invoke-WebRequest execution through Module Logging (Event ID 4103), providing visibility into potentially suspicious HTTP activity (T1059.001).
 
-Proposed configuration:
+**Current committed configuration**:
 ```xml
 <rule id="100413" level="9">
   <if_sid>91801</if_sid>
@@ -699,7 +703,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 | # | Finding | Current status / action |
 |---|---|---|
 | 1 | Sysmon EID 10 was unavailable when the `ProcessAccess` include filter was empty | **Collection fixed / observed:** `\lsass.exe` filter committed; 2026-10-13 Defender event confirms telemetry reaches Wazuh. **Positive detection pending** for `100411`/`100416`. |
-| 2 | Built-in / custom rule dependencies for `100406`, `100412`, `100410` | **Partially resolved**: `100406` is confirmed through parent `92302`. Rule `10041` has been revised to use built-in parent `63103` instead of 60002, but the new revision requires positive validation. Historical `100412` alerts from October 13 are preserved. Rule `100410` now references `92657`, but successful historical correlation remains unverified. |
+| 2 | Built-in / custom rule dependencies for `100406`, `100412`, `100410` | **Partially resolved**: `100406` is confirmed through parent `92302`. Rule `100412` has been revised to use built-in parent `63103` instead of 60002, but the new revision requires positive validation. Historical `100412` alerts from October 13 are preserved. Rule `100410` now references `92657`, but successful historical correlation remains unverified. |
 | 3 | Rule `100401` previously depended on parent `100400` | **Configuration fixed:** independent Sysmon EID 1 matching and broader encoded-switch regex. Historical evidence predates some revisions; verify any new changes independently. |
 | 4 | Suricata sids `1000010`/`1000011` previously lacked Wazuh wrappers | **Configuration fixed:** rules `100308` and `100309` are committed. |
 | 5 | Rule `100410` — single-success historical correlation | **Configuration revised — Validation pending.** The rule now uses `frequency="2"` with `timeframe="200"` to evaluate explicit time-bounded correlation between built-in successful-logon rule `92657` and historical brute-force rule `100408`. Wazuh's counting behavior for this mixed-event sequence remains unverified. A positive test with exactly one `100408` alert followed by one successful `4624`, together with different-IP and expired-window negative tests, is required before the detection can be considered operational. |
@@ -736,7 +740,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 
 ```xml
 <!-- Current 100410 parent/threshold; still awaiting compatibility and end-to-end checks -->
-<rule id="100410" level="13" timeframe="200">
+<r<rule id="100410" level="13" frequency="2" timeframe="200">
   <if_sid>92657</if_sid>
   <if_matched_sid>100408</if_matched_sid>
   <!-- remaining conditions omitted; full rule lives in sysmon_rules.xml -->
