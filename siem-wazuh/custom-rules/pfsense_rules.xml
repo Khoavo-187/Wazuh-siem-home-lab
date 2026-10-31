@@ -35,6 +35,18 @@
     <group>firewall_drop</group>
   </rule>
 
+
+<!-- ICMP -->
+  <rule id="100200" level="3">
+    <if_sid>100100</if_sid>
+    <protocol>^icmp$</protocol>
+    <description>
+      pfSense: ICMP Ping detected
+    </description>
+    <options>no_log</options>
+    <group>icmp,ping</group>
+  </rule>
+
 <!-- Ping sweep -->
 <rule id="100201" level="8" frequency="8" timeframe="30" ignore="120">
     <if_matched_sid>100200</if_matched_sid>
@@ -85,17 +97,6 @@
   </rule>
 
 
-
-  <!-- ICMP -->
-  <rule id="100200" level="3">
-    <if_sid>100100</if_sid>
-    <protocol>^icmp$</protocol>
-    <description>
-      pfSense: ICMP Ping detected
-    </description>
-    <options>no_log</options>
-    <group>icmp,ping</group>
-  </rule>
   <!-- TCP burst -->
 <rule id="100140" level="6" frequency="15" timeframe="10" ignore="60">
     <if_matched_sid>100110</if_matched_sid>
@@ -105,9 +106,9 @@
     <protocol>^tcp$</protocol>
     <dstport>^(?:22|23|445|3389|5900|1433|3306)$</dstport>
     <description>
-      pfSense: Burst of TCP connections from
+      pfSense: High volume of TCP firewall events from
       $(srcip) to $(dstip):$(dstport) -
-      Possible TCP connection floodc on admin access
+      possible connection burst targeting an administrative service
     </description>
     <group>connection_flood</group>
 </rule>
