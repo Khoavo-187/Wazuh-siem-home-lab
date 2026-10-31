@@ -4,7 +4,7 @@ tags: [Blue Team, SOC Home Lab, Detection engineering]
 lang: en
 breaks: true
 ---
-
+f
 # 03 — Detection Engineering: Decoders & Rules
 
 > Reference for every custom **decoder** and **rule** in the lab: **pfSense** (firewall), **Suricata** (network IDS) and **Sysmon / Windows Event Log** (endpoint).
@@ -406,7 +406,7 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100410` | 13 | Windows Security Event 4624, matching built-in rule 92657, following a previous 100408 brute-force detection | if_matched_sid=100408, timeframe=200, same_field=win.eventdata.ipAddress. Frequency attribute removed to trigger on first success. Positive validation pending. |
 | `100411` | 14 | EID 10, `targetImage` ends with `lsass.exe`, `sourceImage` not in the full-path allow-list, `grantedAccess` in a memory-read mask list | none | T1003.001 |
 | `100416` | 15 | Child of `100411`, `callTrace` contains `dbghelp.dll`/`dbgcore.dll` or `UNKNOWN` | none | T1003.001 |
-| `100412` | 15 | Child of built-in `60002` (Security-channel base), `eventID = 1102` | none | T1070.001 |
+| `100412` | 15 | Windows Security Event `1102` — audit log cleared | Child of built-in `63103`; revised parent pending validation | T1070.001 |
 | `100413` | 9 | PowerShell Operational Event 4103, payload contains Invoke-WebRequest | Proposed parent 91801; field matching unvalidated | T1059.001 |
 | `100414` | 12 | EID 3, image `powershell` or `certutil`, port `80` or `443` | none | T1041, T1105 |
 
@@ -518,9 +518,38 @@ EID 10 where `targetImage` ends with `lsass.exe` (T1003.001). Two conditions nar
 Child of `100411` (`if_sid 100411`). Raises severity when `callTrace` contains `dbghelp.dll` or `dbgcore.dll` (the DLLs behind `MiniDumpWriteDump`) or the literal string `UNKNOWN` (code running from unbacked memory — also seen with JIT'd .NET code, so treat `UNKNOWN` alone as weaker signal than the DLL match). Not yet exercised by a real test — the one `ProcessAccess` event captured so far (Defender's own scan) stays entirely inside `mpengine.dll` and system DLLs, so it would not have triggered `100416` even if `100411` had fired for it.
 
 #### `100412` — Security log cleared (level 15)
-`win.system.eventID = 1102` (audit log cleared). Clearing the log is anti-forensics (T1070.001), hence the highest level in the set.
+Detection objective: Detect Windows Security Event ID 1102, indicating that the Security audit log was cleared (MITRE ATT&CK T1070.001).
 
-**Parent reference was wrong, now corrected.** The rule originally chained from `60117` — this turned out not to be a confirmed ancestor of eventchannel Security events, so `100412` may never have been reached in the rule tree at all for the real `1102` event (a different problem from sibling precedence: the parent itself likely never matched). Per Wazuh's own documented eventchannel chain (all eventchannel logs → `60000` → Security channel specifically → `60002`), `if_sid` is now `60002`, a confirmed real ancestor. **Confirmed working, 2026-10-13.** The built-in `63103` fired instead of `100412` in the original 2026-08-28 evidence (captured when the rule still used `60117`); after the `if_sid=60002` fix, a re-test produced two raw `100412` alerts at the intended level 15, with no `63103` row visible in the same Discover view. See `docs/04`, Stage 10.
+Current committed configuration:
+```xml
+<rule id="100412" level="15">
+  <if_sid>63103</if_sid>
+  <field name="win.system.eventID">^1102$</field>
+
+  <description>CRITICAL: Windows Security audit log cleared - Host: $(win.system.computer)</description>
+
+  <mitre>
+    <id>T1070.001</id>
+  </mitre>
+
+  <group>log_cleared,anti_forensics,</group>
+</rule>
+```
+**Detection logic:**
+
+- Parent 63103: The built-in Wazuh rule observed for Windows Security Event 1102 in the original test. The custom rule is now chained to this event-specific detection rather than the previously configured 60002 parent.
+
+- Event 1102: Explicitly restricts matching to Security audit-log clearing events.
+
+- Severity: Level 15 highlights the potential impact of audit-log clearing on incident investigation.
+
+**Historical evidence and validation**:
+
+The October 13, 2026 re-test produced two raw 100412 alerts at level 15, confirming that the custom detection fired in the historical environment. However, the previous committed configuration referenced parent 60002, which is defined for the Windows System channel in the upstream Wazuh ruleset. This inconsistency has not been fully explained.
+
+The current revision changes the parent to 63103, but no positive alert has been preserved after this specific modification. The updated rule must be validated using the deployed Wazuh ruleset and a representative Security Event 1102.
+
+**Status**: Historical detection confirmed — Current parent revision pending validation.
 
 #### `100413` — PowerShell `Invoke-WebRequest` Activity (Level 9)
 
@@ -578,7 +607,10 @@ Persistence
   EID 13: reg.exe writes \CurrentVersion\Run ─► built-in 92302 ─► child 100406  (confirmed firing together, 2026-10-13 re-test)
 
 Anti-forensics
-  Security 1102 (log cleared) ─► 60002 ─► child 100412  (confirmed firing, twice, 2026-10-13 re-test; built-in 63103 not observed alongside)
+  Security EID 1102
+    └─► built-in 63103
+          └─► custom 100412 (level 15)
+                [Current revision — positive validation pending]
 
 PowerShell / shell lineage (100400 and 100401 are now independent rules, not chained)
   EID 1: parent powershell.exe / pwsh.exe / cmd.exe / net.exe ─► 100400
@@ -649,7 +681,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 | # | Finding | Current status / action |
 |---|---|---|
 | 1 | Sysmon EID 10 was unavailable when the `ProcessAccess` include filter was empty | **Collection fixed / observed:** `\lsass.exe` filter committed; 2026-10-13 Defender event confirms telemetry reaches Wazuh. **Positive detection pending** for `100411`/`100416`. |
-| 2 | Built-in / custom rule interaction for `100406`, `100412`, `100410` | `100406` (parent `92302`) and `100412` (parent `60002`) were confirmed with new raw alerts. `100410` parent is **now `92657`**, but positive correlation after this edit remains **unvalidated**. |
+| 2 | Built-in / custom rule dependencies for `100406`, `100412`, `100410` | **Partially resolved**: `100406` is confirmed through parent `92302`. Rule `10041` has been revised to use built-in parent `6310`3 instead of 60002, but the new revision requires positive validation. Historical `100412` alerts from October 13 are preserved. Rule `100410` now references `92657`, but successful historical correlation remains unverified. |
 | 3 | Rule `100401` previously depended on parent `100400` | **Configuration fixed:** independent Sysmon EID 1 matching and broader encoded-switch regex. Historical evidence predates some revisions; verify any new changes independently. |
 | 4 | Suricata sids `1000010`/`1000011` previously lacked Wazuh wrappers | **Configuration fixed:** rules `100308` and `100309` are committed. |
 | 5 | 	Rule 100410 previously used frequency="2", which incorrectly required two successful authentications to trigger instead of one. | **Configuration revised — Validation pending.**: The frequency attribute has been removed to evaluate single-success correlation behavior. However, the interaction between if_matched_sid, timeframe, and same_field has not been validated against the deployed Wazuh rule engine. A successful Event 4624 following one 100408 alert must be tested before this implementation can be considered operational.|
@@ -729,7 +761,7 @@ Get-WinEvent -FilterHashtable @{
 | `100408` | Use previously recorded failed-logon events or a controlled isolated test account. | Confirmed Oct 10 on SMB/NTLM. |
 | `100410` | Replay representative failed/successful logon samples in `wazuh-logtest`, then perform an isolated end-to-end re-test only after correcting any invalid rule syntax. |
 | `100411` / `100416` | Replay sanitized Sysmon EID 10 samples and inspect allowed vs suspicious masks/paths; do not dump credentials on the physical host to validate a README claim. | Event collection observed; positive match unconfirmed. |
-| `100412` | Replay a saved Security EID 1102 in a disposable test environment; do not clear the physical host's Security log again for documentation. | Confirmed Oct 13. |
+| `100412` |   Replay a preserved Security Event `1102` through `wazuh-logtest`, verify parent `63103` and custom rule `100412`, and preserve the test result. Avoid clearing the physical host's Security log again. | Historical detection confirmed (Oct 13); revised parent `63103` pending validation.. |
 | `100413` | Enable Windows Module Logging, run a **benign** `Invoke-WebRequest`, confirm Event 4103, then verify decoded Wazuh fields and parent rule. | Channel configured; EID 4103, parent and rule match **unconfirmed**. |
 | `100414` | Generate an approved benign PowerShell connection on a monitored web port and examine rule precedence against `100404`. | Custom precedence not confirmed. |
 
