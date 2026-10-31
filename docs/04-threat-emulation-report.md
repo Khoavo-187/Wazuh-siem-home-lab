@@ -38,11 +38,11 @@ A numbered 12-stage workflow (**Stage 0 preparation; Stages 1–11 from reconnai
 **Key findings**
 
 1. **Multiple parts of the workflow are observable across four telemetry layers**: network (Suricata), firewall (pfSense), host (Sysmon and Windows Security log), and file/reputation (FIM and VirusTotal). This does **not** mean that the full chain, especially Stage 1 and Stage 11, has been proven end-to-end.
-2. **Three rounds of rule fixes and re-testing (2026-10-10, 2026-10-13) closed three of the four precedence/scope gaps found in the original run (Stages 5, 7 and 10; Stage 3 is still open).** Stages 5 (Discovery), 7 (Persistence) and 10 (Anti-Forensics) all moved from "a built-in rule fired instead of the custom rule" to "the custom rule fires, confirmed with a raw alert" — `100402`/`100407`/`100400` (Stage 5), `100406` (Stage 7), and `100412` (Stage 10). The common fix was the same confirmed mechanism in each case: chain the custom rule as an explicit child of the specific built-in rule that was winning (`if_sid`), or — for Stage 5 — simply widen the custom rule's own matching scope so it has no sibling to lose to (`docs/03`, §5, item 2).
+2. **Rule tuning and re-testing improved detection coverage across Stages 5, 7 and 10.** The October 2026 re-tests confirmed custom alerts for `100402`/`100407`/`100400` (Stage 5), `100406` (Stage 7), and `100412` (Stage 10). Stage 5 benefited from expanded matching scope, while Stage 7 successfully chained `100406` under built-in rule `92302`. Stage 10 produced two historical `100412` alerts on October 13; however, the rule has since been revised to use built-in parent `63103`, and this latest configuration remains pending validation. Stage 3's custom correlation rule `100410` also remains unverified.
 3. Stage 3 has a historical detection and a newer unvalidated correlation configuration. The 2026-10-10 SMB retest produced a genuine `100408` alert followed by a successful NTLM network logon classified as built-in `92657`, not custom `100410`. The currently committed sysmon_rules.xml has since changed to `<if_sid>92657</if_sid>` with `<if_matched_sid>100408</if_matched_sid`> and `timeframe="200"` (the frequency attribute was completely removed to trigger on the very first successful logon). Neither successful loading nor correct historical matching has been demonstrated after this revision, and it must be reviewed with a manager-side syntax/behavior test.
 4. **Stage 8b captured a benign control event, not a true positive.** `procdump.exe` is not staged on the victim, so the planned LSASS-dump attack has not actually been run. What was captured instead is Windows Defender's own real-time-protection engine (`MsMpEng.exe`) touching LSASS memory during a routine scan — the built-in rule `92900` flagged this as "possible credential dump" (a false positive), while the custom `100411` stayed silent; the access mask (`0x101000`) is not one the rule looks for. The allow-list is not proven by this event (the exported path has doubled backslashes that the allow-list regex does not expect), so this shows that telemetry reaches the rule engine, not that the rule can catch a real dump attempt.
 5. **Stage 1 and Stage 11 remain evidence gaps.** Stage 1’s pfSense alert is unrelated loopback DNS; a WAN-side retest has no clean correlated evidence. Stage 11 has a newer HTTP POST script but no preserved file-receipt/integrity evidence and no raw alert from `100413`. Rule `100410` and the LSASS positive case also remain pending validation.
-6. **Log clearing did not blind the SOC**: the Security log was wiped on the endpoint, yet the alert had already been forwarded to Wazuh — and, after the fix, forwarded at the intended severity (level 15, not the built-in's level 5).
+6. **Log clearing did not blind the SOC**: The historical Stage 10 re-test demonstrated that Wazuh recorded custom level-15 alerts for Security audit-log clearing. The latest parent-SID revision requires separate validation before the current configuration is considered confirmed.
 
 ---
 
@@ -701,31 +701,50 @@ Clear-EventLog -LogName Security
 - Event `1102` is written even when an attacker wipes the log. Because Wazuh had already forwarded the events, **the cleared history remains available in the SIEM**, which is the point of shipping logs off the host in real time.
 - The built-in `63103` fired at level 5; the custom `100412` (level 15) did not appear — the same precedence pattern as Stage 7. At the time, `100412` chained from `60117`, a Security-range rule ID that was never confirmed as a real ancestor of event `1102` — a broken-reference problem, not (yet) a sibling-precedence one.
 
-**2026-10-13 re-test — custom rule confirmed firing, twice**
+**2026-10-13 re-test — Historical custom detection confirmed**
 
-`100412`'s parent was corrected to `<if_sid>60002</if_sid>` (the documented ancestor of every eventchannel Security event, per `docs/03` §3.3) and the log-clear command was re-run:
+Following the original unsuccessful custom-rule detection, a re-test on October 13, 2026 produced two `100412` alerts at level 15.
 
-![Figure 16 — Stage 10 re-test, 2026-10-13: custom rule 100412 fires twice, no 63103 visible](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/stage10_cleanup.png)
+![Figure 16 — Stage 10 re-test](https://github.com/Khoavo-187/Wazuh-siem-home-lab/raw/main/screenshot/stage10_cleanup.png)
 
-*Figure 16 — Two `100412` alerts (23:28:52 and 23:28:56), interleaved with `100400` "Shell spawned child process" entries showing `cmd.exe` as a parent — confirming `100400`'s shell-parent list now includes `cmd.exe`.*
+*Figure 16 — Two historical custom `100412` alerts, interleaved with `100400` process-creation alerts.*
 
-| Rule | Level | Time (UTC+7, local) | What fired |
+| Rule | Level | Time (UTC+7) | Observation |
 |---|---|---|---|
-| `100400` | 5 | 23:28:45.358 | `cmd.exe` spawned a child process |
-| `100412` | 15 | 23:28:52.701 | **Custom** — "CRITICAL: Windows Security Event Log cleared" |
-| `100400` | 5 | 23:28:53.689 | `cmd.exe` spawned a child process |
-| `100412` | 15 | 23:28:56.018 | **Custom** — "CRITICAL: Windows Security Event Log cleared" |
+| `100400` | 5 | 23:28:45.358 | Shell-spawned child process |
+| `100412` | 15 | 23:28:52.701 | Security audit log cleared |
+| `100400` | 5 | 23:28:53.689 | Shell-spawned child process |
+| `100412` | 15 | 23:28:56.018 | Security audit log cleared |
 
-Raw alert for the second occurrence: [`stage10-rule-100412-excerpt.json`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/stage10-rule-100412-excerpt.json) — despite the file name it is a full export (`firedtimes: 2`, level 15, `full_log`); consider renaming it.
+The preserved [`stage10-rule-100412-excerpt.json`](../threat-emulation/evidence-logs/stage10-rule-100412-excerpt.json) contains a Wazuh alert export confirming custom rule `100412` and Security Event `1102`.
 
-**Analysis — re-test**
+**Detection engineering revision — Parent SID correction**
 
-- **The parent-reference fix works.** `100412` now fires with its intended level-15 description, twice in this window (likely two separate `wevtutil`/`Clear-EventLog` invocations while testing). Neither row shows the built-in `63103` — consistent with (but not conclusive proof of) the custom rule now winning or replacing it, since Figure 16's visible rows are not an exhaustive search.
-- **A level-15 alert for a log wipe is appropriately loud** for a SOC, versus the original built-in `63103` at level 5 — this was the whole point of writing `100412`.
-- The interleaved `100400` rows (parent `cmd.exe`) independently confirm the Stage 5 finding that `100400`'s `parentImage` pattern now includes `cmd.exe`, not just PowerShell variants.
+The previous committed rule referenced `<if_sid>60002</if_sid>`, although Wazuh's upstream ruleset defines `60002` for the Windows System channel rather than the Security channel.
 
-**Verdict: ✅ Detected by custom rule** (`100412`), confirmed via the 2026-10-13 re-test — closes the Stage 10 gap.
+The currently committed rule has therefore been revised to:
 
+```xml
+<rule id="100412" level="15">
+  <if_sid>63103</if_sid>
+  <field name="win.system.eventID">^1102$</field>
+
+  <description>CRITICAL: Windows Security audit log cleared - Host: $(win.system.computer)</description>
+
+  <mitre><id>T1070.001</id></mitre>
+  <group>log_cleared,anti_forensics,</group>
+</rule>
+```
+
+Built-in rule `63103` was observed for Security Event `1102` during the original test, making it a more appropriate parent candidate for the custom detection.
+
+However, the October 13 alerts predate this latest parent correction. They confirm historical custom-rule execution but do not establish that the current `63103`-based configuration has been successfully validated.
+
+The revised rule requires a manager-side `wazuh-logtest` using a preserved Event `1102` before its current implementation can be considered verified.
+
+**Verdict**: ✅ Historical detection confirmed (100412, October 13, 2026); ⚠️ current 63103-based revision pending validation.
+
+Security audit-log clearing was detected by custom rule `100412` during the October 13 re-test. The newly committed parent correction aligns the intended detection with built-in rule `63103`, but positive validation of this specific revision remains outstanding.
 ---
 
 ### Stage 11 — HTTP Transfer / Exfiltration Simulation (T1059.001; T1048.003 conditional)
@@ -812,7 +831,7 @@ The chain was run in several sessions: Stages 1–7 on 2026-08-28, Stages 8–10
 | 8 Command and Control | `100304` | `100304` (rev 2) | Suricata | ✅ | ✅ |
 | 8b LSASS | `100411` | `92900` (built-in, false positive); `100411` correctly silent | Sysmon | n/a (true positive not tested) | ⚠️ |
 | 9 File Lifecycle | FIM modified / deleted | syscheck (screenshot) | FIM | n/a | ✅ |
-| 10 Anti-Forensics | `100412` | `100412` (re-test, child of `60002`) | Windows | ✅ | ✅ |
+| 10 Anti-Forensics | `100412` | `100412` (Oct 13 historical re-test; current parent `63103` unvalidated) | Windows Security | ✅ Historical | ⚠️ Current revision pending |
 | 11 HTTP Transfer / Exfiltration Simulation | `100413` | none preserved | PowerShell (planned), Sysmon (fallback) | ❌ | ❌ |
 
 **Reading the results**
