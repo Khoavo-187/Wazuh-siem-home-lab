@@ -403,7 +403,7 @@ The rules chain on built-in groups whose names are not consistent (`sysmon_event
 | `100406` | 10 | Child of built-in `92302`, key `…\CurrentVersion\Run` or `RunOnce` | none | T1547.001 |
 | `100407` | 12 | Rule `100402` | ≥3 / 120s, `same_field` user | T1087 |
 | `100408` | 10 | Rule `60122` (event 4625) with `ipAddress` ≠ `-` | ≥5 / 60s, `same_field` `ipAddress`, `ignore 120` | T1110 |
-| `100410` | 13 | Windows Security Event 4624, matching built-in rule 92657, following a previous 100408 brute-force detection | if_matched_sid=100408, timeframe=200, same_field=win.eventdata.ipAddress. Frequency attribute removed to trigger on first success. Positive validation pending. |
+| `100410` | 13 | Windows Security Event `4624`, matching built-in rule `92657` after a previous `100408` brute-force alert | `if_matched_sid=100408`, `frequency=2`, `timeframe=200`, `same_field=win.eventdata.ipAddress`; correlation behavior pending validation | T1110, T1078 |
 | `100411` | 14 | EID 10, `targetImage` ends with `lsass.exe`, `sourceImage` not in the full-path allow-list, `grantedAccess` in a memory-read mask list | none | T1003.001 |
 | `100416` | 15 | Child of `100411`, `callTrace` contains `dbghelp.dll`/`dbgcore.dll` or `UNKNOWN` | none | T1003.001 |
 | `100412` | 15 | Windows Security Event `1102` — audit log cleared | Child of built-in `63103`; revised parent pending validation | T1070.001 |
@@ -455,58 +455,76 @@ Correlation on `100402`: ≥3 recon binaries from the same `win.eventdata.user` 
 #### `100408` — Failed logon burst (level 10)
 Correlation on rule `60122` (failed logon, event 4625): ≥5 failures from the same `ipAddress` within 60s. Entries with `ipAddress` equal to `-` (local logons without a source address) are excluded by a negated field match. Mapped to T1110. It fits network logons (RDP, SMB, OpenSSH for Windows).
 
-#### `100410` — Successful Logon After a Failed-Logon Burst (Level 13)
+#### `100410` — Successful Authentication After Brute-Force Activity (Level 13)
 
-**Detection objective.**Rule 100410 is intended to identify a potentially successful authentication attempt following a previously detected brute-force burst.
+**Detection objective:** Identify a successful Windows authentication event associated with previously detected brute-force activity from the same source IP address.
 
-The detection correlates two security events:
-
-A sequence of failed Windows authentication attempts (Security Event ID 4625) that trigger custom rule 100408
-
-A subsequent successful Windows authentication event (Security Event ID 4624) associated with the same source IP address.
-
-The objective is to identify possible successful password guessing or subsequent use of valid credentials (MITRE ATT&CK T1110 / T1078).
-
-A matching sequence indicates suspicious authentication behavior. It does not independently establish credential compromise.
-
-**Committed design (not confirmed operational):**
+**Current proposed configuration:**
 
 ```xml
-<rule id="100410" level="13" timeframe="200">
+<rule id="100410" level="13" frequency="2" timeframe="200">
   <if_sid>92657</if_sid>
   <if_matched_sid>100408</if_matched_sid>
+
   <field name="win.system.eventID">^4624$</field>
-  <field name="win.eventdata.ipAddress" type="pcre2" negate="yes">^-$</field>
+  <field name="win.eventdata.ipAddress" type="pcre2">^(?!-$).+</field>
+
   <same_field>win.eventdata.ipAddress</same_field>
-  <!-- description / MITRE / groups omitted -->
+
+  <description>
+    CRITICAL: Successful authentication associated with
+    previous brute-force activity from $(win.eventdata.ipAddress) -
+    possible compromised credentials
+  </description>
+
+  <mitre>
+    <id>T1110</id>
+    <id>T1078</id>
+  </mitre>
+
+  <group>authentication_success,possible_compromise,</group>
 </rule>
 ```
 
-**Correlation logic:**
+**Detection logic:**
 
-100408: Detects repeated failed logons (4625) from the same source IP.
+- **`92657`:** Built-in Wazuh rule observed classifying the successful SMB/NTLM authentication event (`4624`) during the October 10 re-test.
+- **`100408`:** Custom brute-force detection confirmed during the same re-test.
+- **`frequency="2"`:** Restores an explicit correlation threshold. The exact counting behavior when combining historical rule `100408` with current rule `92657` remains unvalidated.
+- **`timeframe="200"`:** Intended 200-second correlation window. Its enforcement must be confirmed through positive and negative tests.
+- **`same_field`:** Intended to correlate authentication activity by `win.eventdata.ipAddress`.
 
-92657: Built-in rule observed matching the subsequent successful logon (4624).
+**Historical evidence:**
 
-if_matched_sid=100408: References the preceding brute-force detection.
+The October 10, 2026 SMB/NTLM re-test produced a genuine `100408` brute-force alert followed approximately 18 seconds later by a successful authentication event classified under built-in rule `92657`.
 
-timeframe=200: Configured 200-second correlation window. The frequency attribute has been removed to ensure the rule triggers immediately on the very first successful logon.
+Both events contained source IP `192.168.60.135` and the same target account.
 
-same_field=win.eventdata.ipAddress: Correlates events using the same source IP.
+However, no corresponding custom `100410` alert was preserved. The historical evidence therefore establishes the underlying authentication sequence, not successful execution of the current correlation rule.
 
-**Validation and limitations:**
+**Correlation limitations:**
 
-Confirmed (2026-10-10): An SMB/NTLM test triggered 100408, followed by a successful 4624 event classified under built-in rule 92657.
+1. The interaction between `if_sid`, `if_matched_sid`, `frequency`, and `same_field` has not been verified on the deployed Wazuh Manager.
+2. A frequency threshold of two must not be assumed to represent exactly one brute-force alert followed by one successful authentication event.
+3. The effective 200-second window requires explicit timeout testing.
+4. Source-IP matching alone does not establish that the same account was targeted or compromised.
+5. Current positive coverage is limited to authentication events classified under built-in rule `92657`; other logon paths require separate validation.
 
-Configuration updated: The original parent 60106 was replaced with 92657. No positive 100410 alert has been preserved after this change.
+**Required validation:**
 
-**Frequency limitation**: The requirement is to detect exactly one successful logon after a brute-force alert. The previous configuration used frequency="2", which required two successful logons to trigger. The frequency attribute was removed to evaluate single-success correlation behavior. The intended detection remains unvalidated and requires confirmation against the deployed Wazuh rule engine.
+Test the current configuration using representative Windows Security events and `wazuh-logtest`.
 
-**Detection scope**: Depends on built-in rule 92657 and source-IP correlation. Matching IP addresses does not guarantee that the same account was targeted or compromised.
+| Test | Scenario | Expected behavior |
+|---|---|---|
+| T1 | One `100408` alert followed by one successful `4624`, same IP, within 200 seconds | `100410` should trigger |
+| T2 | Same sequence, different source IPs | No `100410` |
+| T3 | Same sequence, more than 200 seconds apart | No `100410` |
+| T4 | Successful `4624` without a preceding `100408` | No `100410` |
+| T5 | Additional brute-force alerts followed by one successful `4624` | Determine the effective `frequency` counting behavior |
 
-**Next validation**: Verify rule loading and replay the 4625 → 100408 → 4624 sequence using wazuh-logtest and a live SMB/NTLM test. Preserve the raw 100410 alert if generated; otherwise, revise the correlation logic.
+These are **acceptance criteria**, not confirmed test results. If T1 fails, the current configuration does not meet the intended single-success detection objective and must be redesigned.
 
-**Status**:Implemented — Positive correlation not validated.
+**Status: Configuration proposed — Syntax and correlation validation pending.**
 #### `100411` — LSASS memory access (level 14)
 EID 10 where `targetImage` ends with `lsass.exe` (T1003.001). Two conditions narrow it, both tightened since the first draft:
 - `sourceImage` allow-list by **full executable path** (`C:\Windows\System32\svchost.exe`, `taskmgr.exe`, `wininit.exe`, `csrss.exe`, `services.exe`, `wbem\WmiPrvSE.exe`, plus the Defender `MsMpEng.exe` paths) — fixed from an earlier version that matched by file name only (`(?:taskmgr|svchost|MsMpEng)\.exe$`), which a malicious binary could trivially spoof by using the same name in a different folder.
@@ -681,10 +699,10 @@ These items distinguish **a change committed in a configuration file** from **a 
 | # | Finding | Current status / action |
 |---|---|---|
 | 1 | Sysmon EID 10 was unavailable when the `ProcessAccess` include filter was empty | **Collection fixed / observed:** `\lsass.exe` filter committed; 2026-10-13 Defender event confirms telemetry reaches Wazuh. **Positive detection pending** for `100411`/`100416`. |
-| 2 | Built-in / custom rule dependencies for `100406`, `100412`, `100410` | **Partially resolved**: `100406` is confirmed through parent `92302`. Rule `10041` has been revised to use built-in parent `6310`3 instead of 60002, but the new revision requires positive validation. Historical `100412` alerts from October 13 are preserved. Rule `100410` now references `92657`, but successful historical correlation remains unverified. |
+| 2 | Built-in / custom rule dependencies for `100406`, `100412`, `100410` | **Partially resolved**: `100406` is confirmed through parent `92302`. Rule `10041` has been revised to use built-in parent `63103` instead of 60002, but the new revision requires positive validation. Historical `100412` alerts from October 13 are preserved. Rule `100410` now references `92657`, but successful historical correlation remains unverified. |
 | 3 | Rule `100401` previously depended on parent `100400` | **Configuration fixed:** independent Sysmon EID 1 matching and broader encoded-switch regex. Historical evidence predates some revisions; verify any new changes independently. |
 | 4 | Suricata sids `1000010`/`1000011` previously lacked Wazuh wrappers | **Configuration fixed:** rules `100308` and `100309` are committed. |
-| 5 | 	Rule 100410 previously used frequency="2", which incorrectly required two successful authentications to trigger instead of one. | **Configuration revised — Validation pending.**: The frequency attribute has been removed to evaluate single-success correlation behavior. However, the interaction between if_matched_sid, timeframe, and same_field has not been validated against the deployed Wazuh rule engine. A successful Event 4624 following one 100408 alert must be tested before this implementation can be considered operational.|
+| 5 | Rule `100410` — single-success historical correlation | **Configuration revised — Validation pending.** The rule now uses `frequency="2"` with `timeframe="200"` to evaluate explicit time-bounded correlation between built-in successful-logon rule `92657` and historical brute-force rule `100408`. Wazuh's counting behavior for this mixed-event sequence remains unverified. A positive test with exactly one `100408` alert followed by one successful `4624`, together with different-IP and expired-window negative tests, is required before the detection can be considered operational. |
 | 6 | Suricata sid `1000006` previously flooded alerts | **Configuration fixed:** `threshold:type limit, track by_dst, count 1, seconds 60` is committed. |
 | 7 | Suricata sid `1000005` previously used tactic `TA0043` for T1046 | **Configuration fixed:** current `local.rules` uses `TA0007` (Discovery). |
 | 8 | Some XML `<field>` regular expressions span multiple lines | **Pending controlled test:** whitespace/line-break handling should be checked with actual decoded events, especially rules `100403`, `100405`, `100411`; do not assume every expression is normalized. |
