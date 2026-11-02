@@ -6,6 +6,6 @@ set -euo pipefail
 
 LISTEN_PORT=4445
 
-OUTPUT_FILE="extracted_data.zip"
+OUTPUT_FILE="stage11-http-request.bin"
 
 nc -lvnp "$LISTEN_PORT" > "$OUTPUT_FILE"
