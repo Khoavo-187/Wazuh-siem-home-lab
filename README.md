@@ -875,7 +875,7 @@ As of the 2026-10-13 re-test, this is down to two rules:
 ```text
 100410   → 100410 has been reparented to built-in rule 92657 and now uses frequency="2", timeframe="200". The revised correlation behavior remains pending validation.
 100411   → not yet tested with a true positive (procdump is not staged);
-          confirmed correctly silent on a Windows Defender false positive
+          Custom 100411 remained silent on a Windows Defender LSASS access event with a non-matching access mask. This confirms telemetry visibility but does not validate the process allow-list or positive detection behavior.
 ```
 
 `100402`, `100406` and `100412` were previously in this list and are now confirmed firing via raw alerts (see the Validation table above and `docs/04`). `100413` (Exfiltration) has not been tested at all yet, so it isn't a "built-in instead of custom" case — it's simply not evidenced.
