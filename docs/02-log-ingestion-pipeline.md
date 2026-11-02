@@ -8,6 +8,7 @@
 | pfSense firewall | Syslog UDP/514 → manager | custom `pfsense-lab` (+5 children) | `100100` |
 | Suricata (endpoint) | `eve.json` → agent `localfile` (json) | built-in JSON decoder | `86601` |
 | Windows Security / Sysmon / OpenSSH | Event Log channels → agent (`eventchannel`) | built-in `windows_eventchannel` | built-in Windows/Sysmon rules |
+| Windows PowerShell Operational | Event Log channel → agent (`eventchannel`) | built-in `windows_eventchannel`; PowerShell parent `91801` | custom `100413` (intended; pending validation) |
 | FIM and VirusTotal | agent syscheck → manager integration | built-in | `550`–`593` range → `87105` |
 
 ## 1. pfSense syslog and the custom decoder
@@ -55,15 +56,10 @@ pfSense sends `filterlog` lines (comma-separated, RFC 3164) to the manager over 
       "firedtimes": 1791,
       "level": 3,
       "description": "pfSense: Traffic allowed 192.168.254.101:20455 -> 8.8.8.8:53",
-      "groups": [
-        "pfsense",
-        "firewall_pass"
-      ],
+      "groups": ["pfsense", "firewall_pass"],
       "id": "100110"
     },
-    "decoder": {
-      "name": "pfsense-lab"
-    },
+    "decoder": { "name": "pfsense-lab" },
     "full_log": "Aug 9 05:56:36 filterlog[63489]: 76,,,1000002661,em0,match,pass,out,4,0x0,,63,4250,0,none,17,udp,64,192.168.254.101,8.8.8.8,20455,53,44",
     "timestamp": "2026-08-09T05:56:36.860+0000"
   }
@@ -94,7 +90,7 @@ Suricata runs on the Windows endpoint and inspects traffic on its VMnet1 adapter
 
 ## 3. Windows Event Log and Sysmon
 
-The agent reads channels directly (`log_format eventchannel`): `Security`, `System`, `Application`, `Microsoft-Windows-OpenSSH/Operational` and `Microsoft-Windows-Sysmon/Operational`. The Windows audit policies and the Sysmon install are in `docs/01` §5.
+The agent reads channels directly (`log_format eventchannel`): `Security`, `System`, `Application`, `Microsoft-Windows-OpenSSH/Operational`, `Microsoft-Windows-Sysmon/Operational`, and `Microsoft-Windows-PowerShell/Operational`. The Windows audit policies and the Sysmon install are in `docs/01` §5.
 
 | Telemetry | Needs | Used by |
 |---|---|---|
@@ -105,9 +101,27 @@ The agent reads channels directly (`log_format eventchannel`): `Security`, `Syst
 | Sysmon EID 10 | `ProcessAccess` include on `lsass.exe` | `100411`, `100416` |
 | Sysmon EID 11 | include by extension/folder | `100405` |
 | Sysmon EID 13 | `CurrentVersion\Run` include | `100406` |
+| PowerShell EID 4103 | PowerShell Module Logging enabled by policy; agent channel subscription | `100413` (intended; pending validation) |
+| PowerShell EID 4104 | PowerShell Script Block Logging enabled by policy; agent channel subscription | Additional script-content telemetry; not the current trigger for `100413` |
 
 > [!WARNING]
-> The **PowerShell Operational channel (events 4103/4104) is configured into ossec.conf  (although it is not verified by testing)** by the committed agent configuration, and PowerShell module/script-block logging is not documented as enabled. Rule `100413` depends on that telemetry (see `docs/03`); until it is added to the agent and enabled by policy, that rule cannot fire.
+> The committed Windows agent `ossec.conf` already subscribes to
+> `Microsoft-Windows-PowerShell/Operational` with `log_format: eventchannel`;
+> do not add a duplicate `<localfile>` block. This configuration only tells
+> the agent which channel to read — it does **not** enable Windows PowerShell
+> logging. Module Logging (Event ID 4103) must be enabled separately through
+> Group Policy (module name list: `*`) for the intended `100413` detection.
+> Script Block Logging (Event ID 4104) is a separate policy and does not
+> replace 4103 for the current rule.
+>
+> End-to-end collection has not yet been verified: confirm that a 4103 event
+> is generated on Windows, forwarded by the agent, and decoded by the manager.
+> The committed `100413` rule currently checks `win.eventdata.payload` for
+> `Invoke-WebRequest` under parent `91801`; inspect an actual decoded event
+> before changing the field match. Until 4103 generation and ingestion are
+> confirmed, treat `100413` as **pending validation**, not as a working
+> detection. Even when it fires, the rule indicates PowerShell web-request
+> activity, not proof that a file transfer completed.
 
 **Evidence** (abridged from `stage04-sysmon-encoded-powershell.json`; the event was produced by an earlier revision of `100401`).
 
@@ -134,7 +148,7 @@ The agent's syscheck module watches `C:\Users\LENOVO\Downloads\virustotaltest` i
   "agent": { "ip": "192.168.60.1", "name": "window11Host" },
   "data": { "integration": "virustotal",
             "virustotal": { "malicious": "1", "found": "1", "positives": "62",
-              "source": { "file": "c:\\users\\lenovo\\downloads\\virustotaltest\\eicar-facebook.com",
+              "source": { "file": "c:\\\\users\\\\lenovo\\\downloads\\\\virustotaltest\\\\eicar-facebook.com",
                           "md5": "44d88612fea8a8f36de82e1278abb02f" } } },
   "rule": { "id": "87105", "level": 12 },
   "location": "virustotal"
