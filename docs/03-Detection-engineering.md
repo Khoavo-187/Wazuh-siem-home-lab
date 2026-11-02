@@ -716,11 +716,11 @@ These items distinguish **a change committed in a configuration file** from **a 
 | 12 | Suricata sid `1000011` matches only a limited URI extension list | **Unresolved tuning:** `.com` and other extensions, and URIs with query parameters, are not covered. Extend only if the intended scope requires it; validate false positives. |
 | 13 | Rule `100400` formerly had an invalid field substitution in its description | **Fixed / confirmed:** corrected `$(win.eventdata.user)` in an Oct 13 raw alert. |
 | 14 | Rule `100401` still contains a stray quotation mark in its description | **Cosmetic XML fix pending:** normalize `CMD:` when modifying the rule. |
-| 15 | Rule `100308` contains spelling mistakes ("send", "possble") | **Cosmetic XML fix pending:** use "sent" / "possible". |
+| 15 | Rule `100308` contains spelling mistakes ("send", "possble") | **Cosmetic XML fix pending:** use "sent" / "possible" (already fixed). |
 | 16 | Outer group `<group name="sysmon_local,windows">` and nested group names may merge unexpectedly in Wazuh alerts | **Investigate before changing separators:** preserved `rule.groups` for `100406`/`100412` reportedly contains merged entries (`windowspersistence`, `windowslog_cleared`). Prefer verifying `rule.groups`, then test adding a comma to the outer group name; do not assume rule-level trailing commas alone caused Dashboard HTTP 500. |
 | 17 | Rule `100411` full-path allow-list and escaped Windows paths | **Filter not proved:** compare decoded `sourceImage` to the regex with `wazuh-logtest`; the Defender event was suppressed by the unmatched access mask `0x101000`, not proof that the allow-list itself works. |
-| 18 | Rule `100400` can shadow `100402` for `net.exe` / `net1.exe` started from a shell | **Unresolved precedence/tuning:** either exclude `net`/`net1` from the generic rule or prove the specific rule wins after the change; preserve a fresh raw test. |
-| 19 | Suricata wrapper `<field name="alert.signature_id">` uses unanchored numeric patterns | **Optional hardening:** prefer `^SID$` for each exact SID to avoid accidental partial matches. |
+| 18 | Rule `100400` can shadow `100402` for `net.exe` / `net1.exe` started from a shell | **Pending validation:** Already exclude `net`/`net1` from the generic rule but not yet prove the specific rule wins after the change; preserve a fresh raw test. |
+| 19 | Suricata wrapper `<field name="alert.signature_id">` uses anchored numeric patterns | **Configuration fixed — Validation pending**: All ten Suricata wrapper rules now use anchored signature-ID patterns (^SID$). Runtime matching should be verified against representative Suricata alert events. |
 | 20 | Rule 100413 previously mapped PowerShell web-request activity to T1567.002 (cloud-storage exfiltration). | **Mapping correction proposed**: Retain T1059.001 for the PowerShell detection. Assess exfiltration techniques separately based on the actual transfer method and supporting evidence.|
 
 **Rule IDs and source of truth:** For executable detection logic, inspect the committed XML/Suricata files in the table at the top of this document. For test outcome, inspect the raw alert's `rule.id`, `full_log`, `data` fields and timestamp. See `docs/04` for dates and evidence provenance.
@@ -740,7 +740,7 @@ These items distinguish **a change committed in a configuration file** from **a 
 
 ```xml
 <!-- Current 100410 parent/threshold; still awaiting compatibility and end-to-end checks -->
-<r<rule id="100410" level="13" frequency="2" timeframe="200">
+<rule id="100410" level="13" frequency="2" timeframe="200">
   <if_sid>92657</if_sid>
   <if_matched_sid>100408</if_matched_sid>
   <!-- remaining conditions omitted; full rule lives in sysmon_rules.xml -->
