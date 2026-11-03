@@ -5,13 +5,13 @@
   <!-- ========================================================= -->
 
   
-  <rule id="100401" level="10">
+  <rule id="100401" level="13">
     <if_group>sysmon_event1</if_group>
     
-    <field name="win.eventdata.image" type="pcre2">(?i)powershell\.exe$</field>
+    <field name="win.eventdata.originalFileName" type="pcre2">(?i)^powershell\.exe$</field>
     <field name="win.eventdata.commandLine" type="pcre2">(?i)(?:^|\s)[-/](?:e|ec|en[a-z]*)\s+\S{20,}</field>
     
-    <description>Sysmon: Encoded Powershell command from $(win.eventdata.user) - possible command obfuscation | parent:$(win.eventdata.parentImage) | CMD" $(win.eventdata.commandLine) </description>
+    <description>Sysmon: Encoded Powershell command from $(win.eventdata.user) - possible command obfuscation | parent:$(win.eventdata.parentImage) | CMD: $(win.eventdata.commandLine) </description>
     <mitre><id>T1027</id><id>T1059.001</id></mitre>
 
     <group>obfuscation,suspicious_powershell</group>
@@ -23,10 +23,10 @@
   <rule id="100400" level="5">
   <if_group>sysmon_event1</if_group>
 
-  <field name="win.eventdata.parentImage" type="pcre2">(?i)(?:powershell|pwsh|cmd|net)\.exe$</field>
+  <field name="win.eventdata.parentImage" type="pcre2">(?i)\\+(?:powershell|pwsh|cmd|net)\.exe$</field>
 
   <!-- Exclude discovery binaries handled by 100402 -->
-  <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)(?:whoami|systeminfo|tasklist|nltest|curl|bitsadmin|certutil|net|net1)\.exe$</field>
+  <field name="win.eventdata.image" type="pcre2" negate="yes">(?i)\\+(?:whoami|systeminfo|tasklist|nltest|net1?|arp|bitsadmin|certutil)\.exe$</field>
 
   <description>Sysmon: Shell spawned child process - Parent: $(win.eventdata.parentImage) | Child: $(win.eventdata.image) | CMD: $(win.eventdata.commandLine) | User: $(win.eventdata.user)</description>
 
@@ -40,7 +40,7 @@
   <rule id="100402" level="6">
   <if_group>sysmon_event1</if_group>
 
-  <field name="win.eventdata.image" type="pcre2">(?i)(?:whoami|systeminfo|tasklist|nltest|net|net1)\.exe$</field>
+  <field name="win.eventdata.image" type="pcre2">(?i)\\+(?:whoami|systeminfo|tasklist|nltest|net1?|arp)\.exe$</field>
 
   <description>Sysmon: Reconnaissance binary executed - Image: $(win.eventdata.image) | CMD: $(win.eventdata.commandLine) | User: $(win.eventdata.user)</description>
 
@@ -241,9 +241,8 @@
 
     <!-- Loại trừ một số tiến trình hợp lệ thường gặp -->
     <field name="win.eventdata.sourceImage" type="pcre2" negate="yes">
-      (?i)^C:\\Windows\\System32\\(?:svchost|taskmgr|wininit|csrss|services|lsass|wbem\\WmiPrvSE)\.exe$|^C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\[^\\]+\\MsMpEng\.exe$|^C:\\Program Files\\Windows Defender\\MsMpEng\.exe$
-    </field>
-     
+(?i)^C:\\+Windows\\+System32\\+(?:svchost|taskmgr|wininit|csrss|services|lsass)\.exe$|^C:\\+Windows\\+System32\\+wbem\\+WmiPrvSE\.exe$|^C:\\+ProgramData\\+Microsoft\\+Windows Defender\\+Platform\\+[^\\]+\\+MsMpEng\.exe$|^C:\\+Program Files\\+Windows Defender\\+MsMpEng\.exe$    
+    </field>  
     <field name="win.eventdata.grantedAccess" type="pcre2">(?i)^0x(?:1010|1410|1438|143a|1f0fff|1f1fff|1f3fff|1fffff)$</field>
  
    <description>
