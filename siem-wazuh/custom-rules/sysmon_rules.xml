@@ -1,4 +1,4 @@
-<group name="sysmon_local,windows">
+<group name="sysmon_local,windows,">
 
   <!-- ========================================================= -->
   <!-- 1.2. PowerShell Encoded Command                             -->
