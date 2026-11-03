@@ -54,7 +54,8 @@
       "description": "Sysmon: Registry Run key modified - possible persistence via C:\\\\Windows\\\\system32\\\\reg.exe",
       "groups": [
         "sysmon_local",
-        "windowspersistence",
+        "windows",
+        "persistence",
         "registry"
       ],
       "mitre": {
