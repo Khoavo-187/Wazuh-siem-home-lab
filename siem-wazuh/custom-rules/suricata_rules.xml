@@ -80,5 +80,22 @@
     <group>command_and_control,download_execution</group>
   </rule>
 
+  <!-- Suricata rule for stage 11: data exfiltration through HTTP POST method from victim to attacker (Still need pending validation, Fixed recommendation) -->
+  <rule id="100310" level="8">
+    <if_sid>86601</if_sid>
+    <field name="alert.signature_id">^1000012$</field>
+
+    <description>
+        Suricata: HTTP POST upload request to Stage 11 receiver
+        from $(src_ip) to $(dest_ip):$(dest_port)
+    </description>
+
+    <mitre>
+        <id>T1048.003</id>
+    </mitre>
+
+    <group>exfiltration,http,</group>
+</rule>
+
 
 </group>
