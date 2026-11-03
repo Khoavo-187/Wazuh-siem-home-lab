@@ -1,4 +1,4 @@
-<group name="pfsense">
+<group name="pfsense,">
 
   <!-- Base rule -->
   <rule id="100100" level="1">
