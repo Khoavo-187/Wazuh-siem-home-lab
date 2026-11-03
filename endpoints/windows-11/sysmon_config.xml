@@ -254,6 +254,7 @@
 			<Image condition="is">msiexec.exe</Image> <!--Ignore setups-->
 			<Image condition="is">TrustedInstaller.exe</Image> <!--Ignore setups-->
 			<TargetFilename condition="contains">\NVIDIA\NvBackend\ApplicationOntology\</TargetFilename> <!--NVIDIA GeForce Experience Application Ontology, 1000's of events in user profile-->
+			<TargetFilename condition="contains all">C:\Windows\Temp\;.zip</TargetFilename> <!-- Required for checking Temp directory in disk C and target filename or extension -->
 		</FileCreateTime>
 	</RuleGroup>
 
