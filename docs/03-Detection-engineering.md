@@ -4,7 +4,7 @@ tags: [Blue Team, SOC Home Lab, Detection engineering]
 lang: en
 breaks: true
 ---
-f
+
 # 03 — Detection Engineering: Decoders & Rules
 
 > Reference for every custom **decoder** and **rule** in the lab: **pfSense** (firewall), **Suricata** (network IDS) and **Sysmon / Windows Event Log** (endpoint).
@@ -242,7 +242,7 @@ Settings in [`suricata.yaml`](https://github.com/Khoavo-187/Wazuh-siem-home-lab/
 |---|---|---|
 | `HOME_NET` | `[192.168.60.0/24, !192.168.60.135]` | The whole LAN **except Kali** (`.135`) |
 | `EXTERNAL_NET` | `!$HOME_NET` | In practice: Kali plus the Internet |
-| `rule-files` | `local.rules` (the committed file also lists `emerging-all-fixed.rules` — confirm whether it is loaded in the validated runs) | Alerts from other rule sets are not wrapped by the custom rules; all evidence in this repo comes from sids `1000002`–`1000011` |
+| `rule-files` | `local.rules` (`emerging-all-fixed.rules` is commented out since 2026-11-01) | Alerts from other rule sets are not wrapped by the custom rules; preserved evidence currently covers SIDs `1000002`–`1000011`; SID `1000012` remains pending validation |
 | `eve-log` | enabled (`alert`, `http`, `dns`, `tls`, `files`, …) → `eve.json` | `eve.json` is the file the Wazuh agent tails |
 
 Why `HOME_NET` excludes Kali: with Kali inside `$HOME_NET`, rules written as `$HOME_NET → any` (reverse shell ports) fired on Nmap scans run **from** the attacker. Removing the attacker from `$HOME_NET` makes it an `$EXTERNAL_NET` source, so the inbound rules (`1000002`, `1000003`) fire on Kali and the outbound rules no longer fire on Kali's own traffic.

@@ -8,12 +8,24 @@
   </rule>
 
 
+<!-- Port scan correlation split by action: pass (100110) and block (100101). Pending validation with a real Nmap run; confirm these are the matches that accumulate in the deployed rule chain. -->
 <rule id="100130" level="10" frequency="15" timeframe="30" ignore="120">
-    <if_matched_sid>100100</if_matched_sid>
+    <if_matched_sid>100110</if_matched_sid>
     <same_source_ip />
     <different_dstport />
-    <description>pfSense: Possible port scan from $(srcip) -
-      nhieu destination port khac nhau</description>
+    <description>pfSense: Possible port scan (allowed traffic) from $(srcip) - multiple destination ports</description>
+    <mitre>
+      <id>T1046</id>
+    </mitre>
+
+    <group>network_scan,recon</group>
+</rule>
+
+<rule id="100131" level="10" frequency="15" timeframe="30" ignore="120">
+    <if_matched_sid>100101</if_matched_sid>
+    <same_source_ip />
+    <different_dstport />
+    <description>pfSense: Possible port scan (blocked traffic) from $(srcip) - multiple destination ports</description>
     <mitre>
       <id>T1046</id>
     </mitre>
@@ -54,7 +66,7 @@
     <different_dstip />
     <description>
       pfSense: Possible ping sweep from $(srcip) -
-      nhieu destination host khac nhau
+      multiple destination hosts
     </description>
     <mitre>
       <id>T1018</id>

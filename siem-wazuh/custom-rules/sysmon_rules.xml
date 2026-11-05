@@ -128,7 +128,8 @@
   <!-- 7. Registry Run / RunOnce persistence - Event ID 13     -->
   <!-- ========================================================= -->
   <rule id="100406" level="10">
-  <if_sid>92302</if_sid>
+  <!-- Parent list: 92302 (reg.exe, validated 2026-10-13) plus 92300 (Run-key base). Keep both so the custom rule stays a child of whichever built-in rule matches. Verify both IDs on your Wazuh build. -->
+  <if_sid>92300,92302</if_sid>
 
   <field name="win.eventdata.targetObject" type="pcre2">(?i)\\CurrentVersion\\(?:Run|RunOnce)(?:\\|$)</field>
 
@@ -199,7 +200,8 @@
 <rule id="100410" level="13" frequency="2" timeframe="200">
 
   <!-- Built-in rule observed for successful SMB/NTLM logon -->
-  <if_sid>92657</if_sid>
+  <!-- 92657 = NTLM remote logon (observed 2026-10-10); 92651 = remote IPv4 logon parent. Keep both as if_sid parents. Verify both IDs on your Wazuh build. -->
+  <if_sid>92651,92657</if_sid>
 
   <!-- Previously detected brute-force activity -->
   <if_matched_sid>100408</if_matched_sid>

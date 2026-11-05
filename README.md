@@ -308,8 +308,9 @@ The current custom rules include detections for:
 | `1000007` | Suspicious curl User-Agent |
 | `1000008` | EICAR test file over HTTP |
 | `1000009` | Suspicious DNS test domain |
-| `1000010` | Windows shell banner pattern |
+| `1000010` | Windows CMD banner pattern |
 | `1000011` | Curl download of script/executable |
+| `1000012` | PowerShell HTTP POST to a non-HOME_NET destination (Stage 11; pending validation) |
 
 Suricata writes EVE JSON events to:
 
