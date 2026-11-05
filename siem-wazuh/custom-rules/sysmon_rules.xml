@@ -197,37 +197,28 @@
 <!--     Correlation behavior requires validation                -->
 <!-- ========================================================= -->
 
-<rule id="100410" level="13" frequency="2" timeframe="200">
-
-  <!-- Built-in rule observed for successful SMB/NTLM logon -->
-  <!-- 92657 = NTLM remote logon (observed 2026-10-10); 92651 = remote IPv4 logon parent. Keep both as if_sid parents. Verify both IDs on your Wazuh build. -->
+<rule id="100410" level="13" frequency="6" timeframe="200">
+  <!-- Parent Rule: Bắt sự kiện đăng nhập thành công từ xa (Event 4624) -->
   <if_sid>92651,92657</if_sid>
-
-  <!-- Previously detected brute-force activity -->
-  <if_matched_sid>100408</if_matched_sid>
-
-  <!-- Successful Windows authentication -->
+  
+  <!-- Correlation: Yêu cầu trước đó phải có các sự kiện Đăng nhập thất bại (Event 4625) -->
+  <if_matched_sid>60122</if_matched_sid>
+  
+  <!-- Ràng buộc 1: Đảm bảo sự kiện chốt cuối cùng là Event 4624 -->
   <field name="win.system.eventID">^4624$</field>
-
-  <!-- Exclude events with missing/placeholder source IP -->
+  
+  <!-- Ràng buộc 2: IP nguồn không được trống hoặc có ký tự '-' -->
   <field name="win.eventdata.ipAddress" type="pcre2">^(?!-$).+</field>
-
-  <!-- Correlate events by source IP -->
+  
+  <!-- Ràng buộc 3: 100% các sự kiện (cả thất bại và thành công) phải đến từ CÙNG 1 địa chỉ IP -->
   <same_field>win.eventdata.ipAddress</same_field>
-
-  <description>
-    CRITICAL: Successful authentication associated with
-    previous brute-force activity from $(win.eventdata.ipAddress) -
-    possible compromised credentials
-  </description>
-
+  
+  <description>Sysmon/Windows: Successful logon after multiple failed attempts (Brute-force) from $(win.eventdata.ipAddress)</description>
   <mitre>
     <id>T1110</id>
     <id>T1078</id>
   </mitre>
-
-  <group>authentication_success,possible_compromise,</group>
-
+  <group>authentication_success,gpo_compliance,</group>
 </rule>
 
 
