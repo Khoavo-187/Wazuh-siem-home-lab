@@ -239,7 +239,6 @@
 		<FileCreateTime onmatch="include">
 			<Image name="T1099" condition="begin with">C:\Users</Image> <!--Look for timestomping in user area, usually nothing should be doing that here-->
 			<TargetFilename name="T1099" condition="end with">.exe</TargetFilename> <!--Look for backdated executables anywhere-->
-			<TargetFilename condition="contains all">C:\Windows\Temp\;.zip</TargetFilename> <!-- Required for checking Temp directory in disk C and target filename or extension -->
 			<Image name="T1099" condition="begin with">\Device\HarddiskVolumeShadowCopy</Image> <!--Nothing should be written here | Credit: @SBousseaden [ https://twitter.com/SBousseaden/status/1133030955407630336 ] -->
 		</FileCreateTime>
 	</RuleGroup>
@@ -485,6 +484,7 @@
 	<RuleGroup name="" groupRelation="or">
 		<FileCreate onmatch="include">
 			<TargetFilename name="T1023" condition="contains">\Start Menu</TargetFilename> <!--Windows: Startup links and shortcut modification [ https://attack.mitre.org/wiki/Technique/T1023 ] -->
+			<TargetFilename name="T1560" condition="contains all">C:\Windows\Temp\;.zip</TargetFilename> <!-- Required for checking Temp directory in disk C and target filename or extension -->
 			<TargetFilename name="T1165" condition="contains">\Startup\</TargetFilename> <!--Microsoft:Changes to user's auto-launched files and shortcuts-->
 			<TargetFilename name="OutlookAttachment" condition="contains">\Content.Outlook\</TargetFilename> <!--Microsoft:Outlook: attachments-->
 			<TargetFilename name="Downloads" condition="contains">\Downloads\</TargetFilename> <!--Downloaded files. Does not include "Run" files in IE-->
