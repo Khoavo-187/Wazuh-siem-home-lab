@@ -17,7 +17,7 @@ excerpt, rule mismatch) is recorded in the index below.
 | `stage02-windows-4625-failed-logon.json` | 2 — Brute Force | `60122` | ✅ Verified |
 | `stage02-rule-100408-bruteforce-retest.json` | 2 — Brute Force | `100408` | ✅ Verified (2026-10-10 re-test) — correlation rule confirmed firing, correct `ipAddress` (`192.168.60.135`) |
 | `stage03-windows-4740-account-locked.json` | 3 — Successful Access | `60115` | ⚠️ Evidence is a lockout, not a logon (original 2026-08-28 run) |
-| `stage03-rule-100410-correlation-excerpt.json` | 3 — Successful Access | `100410` | ⚠️ Condensed excerpt, early rule version |
+| `stage03-rule-100410-correlation-excerpt.json` | 3 — Successful Access | `100410` | ⚠️ Condensed excerpt from an early rule version; not validation evidence for the current `if_sid=92651,92657` / `if_matched_sid=60122` / `frequency=6` configuration |
 | `stage03-rule-92657-successful-logon.json` | 3 — Successful Access | `92657` (built-in) | ✅ Verified (2026-10-10 re-test) — real `4624`, but a built-in rule fired instead of custom `100410` |
 | `stage04-sysmon-encoded-powershell.json` | 4 — Execution | `100401` | ✅ Verified |
 | `stage05-sysmon-net1-discovery.json` | 5 — Discovery | `92031` (built-in) | ⚠️ Original run (2026-08-28) — custom rules not proven |

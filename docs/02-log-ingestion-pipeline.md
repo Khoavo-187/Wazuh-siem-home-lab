@@ -94,7 +94,7 @@ The agent reads channels directly (`log_format eventchannel`): `Security`, `Syst
 
 | Telemetry | Needs | Used by |
 |---|---|---|
-| Security `4624` / `4625` | Audit *Logon* success + failure | `100408`, `100410` |
+| Security `4624` / `4625` | Audit *Logon* success + failure | `100408` (failed-logon burst); `100410` (successful `4624` after prior `60122` failures, same source IP, current-event parent `92651` or `92657`; six matches / 200s, pending validation) |
 | Security `1102` | always logged | `100412` |
 | Sysmon EID 1 | Sysmon; command-line fields | `100400`–`100403`, `100407` |
 | Sysmon EID 3 | include list in `sysmon_config.xml` | `100404`, `100414` |

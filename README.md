@@ -474,7 +474,7 @@ Examples:
 100406 → Registry Run key persistence
 100407 → Correlation: multiple discovery binaries in a short window
 100408 → Failed login burst
-100410 → Successful login after failed-login burst
+100410 → Successful Windows remote logon after repeated failed logons; current Event 4624 must match built-in parent 92651/92657 (OR), with ≥6 prior `60122` matches within 200s from the same source IP; correlation validation pending
 100411 → Suspicious LSASS access
 100412 → Security log cleared
 100413 → PowerShell Invoke-WebRequest activity (Event 4103; pending validation)
@@ -527,7 +527,7 @@ The current validation results should be interpreted carefully.
 |---|---|---|
 | 1 | Reconnaissance | ⚠️ Re-test required; endpoint Suricata is the expected sensor |
 | 2 | Brute Force | ✅ Suricata + Windows failed-logon telemetry; custom correlation rule `100408` confirmed firing (2026-10-10) |
-| 3 | Successful Access | ⚠️ Successful `4624` confirmed (2026-10-10, over SMB), but reported by a built-in rule (`92657`); custom `100410` not yet proven |
+| 3 | Successful Access | ⚠️ Successful `4624` confirmed (2026-10-10, SMB/NTLM, built-in `92657`); current custom `100410` definition is configured for six prior `60122` matches within 200s from the same IP, with current-event parent `92651` or `92657`; custom alert not yet proven |
 | 4 | Encoded PowerShell | ✅ Custom detection observed |
 | 5 | Discovery | ✅ Custom rules `100402`/`100407`/`100400` confirmed firing (2026-10-13 re-test) |
 | 6 | Payload Delivery | ✅ Suricata + FIM + VirusTotal evidence |
@@ -871,10 +871,10 @@ still requires a dedicated validation run.
 
 ## 2. Some Custom Rules Are Not Yet Proven
 
-As of the 2026-10-13 re-test, this is down to two rules:
+The remaining rules with incomplete positive validation are:
 
 ```text
-100410   → 100410 has been reparented to built-in rule 92657 and now uses frequency="2", timeframe="200". The revised correlation behavior remains pending validation.
+100410   → Current XML: if_sid=92651,92657 (OR); if_matched_sid=60122; frequency=6; timeframe=200; same_field=win.eventdata.ipAddress. Correlation validation remains pending; this is not a dependency on custom rule 100408.
 100411   → not yet tested with a true positive (procdump is not staged);
           Custom 100411 remained silent on a Windows Defender LSASS access event with a non-matching access mask. This confirms telemetry visibility but does not validate the process allow-list or positive detection behavior.
 ```
