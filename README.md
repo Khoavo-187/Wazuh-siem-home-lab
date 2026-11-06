@@ -914,7 +914,7 @@ Kali `192.168.60.135` and Windows `192.168.60.1` share `192.168.60.0/24`. Direct
 
 ## 5. Environment reproducibility is incomplete
 
-- `endpoints/manager/m_ossec.conf` is a sanitized skeleton containing `...` placeholders; it is not a deployable full Manager configuration.
+- `endpoints/manager/m_ossec.conf` is a sanitized skeleton containing `...` placeholders; it is not a deployable full Manager configuration (already modified and adding in the `/manger` folder).
 - The exact Wazuh build and pfSense version are not recorded in `docs/01`.
 - The monitored Windows 11 endpoint is the physical VMware host, not a disposable guest. Destructive tests should use a separate disposable Windows VM.
 - The external-attacker / pfSense-routed attack path is planned but not demonstrated end-to-end.
@@ -922,7 +922,7 @@ Kali `192.168.60.135` and Windows `192.168.60.1` share `192.168.60.0/24`. Direct
 
 ## 6. Suricata scope
 
-The committed Suricata configuration runs in IDS mode. `HOME_NET` excludes Kali (`192.168.60.135`) to make the attacker appear as `$EXTERNAL_NET` for the current rules. The second pfSense-side Suricata instance is not configured/evidenced in this repository. The committed EVE file is the Windows endpoint sensor's `eve.json`.
+- The committed Suricata configuration runs in IDS mode. `HOME_NET` excludes Kali (`192.168.60.135`) to make the attacker appear as `$EXTERNAL_NET` for the current rules. The second pfSense-side Suricata instance is not configured/evidenced in this repository. The committed EVE file is the Windows endpoint sensor's `eve.json`.
 ---
 
 # 🚧 Future Improvements
@@ -1019,9 +1019,7 @@ The repository contains a multi-source SOC lab with Wazuh, Windows Sysmon/Securi
 The strongest demonstrated scenario is the **same-LAN Kali-to-Windows east-west path**. The repository does not yet establish an uninterrupted, fully detected attack chain. Stage 1 attribution, current revisions of `100410`, `100412` and SID `1000006`, positive LSASS detection, raw Stage 9 evidence, and Stage 11 transfer/detection remain open validation items.
 
 The next milestone is to close those evidence gaps and align every result with the exact rule/configuration revision that produced it.
-```
 
-path.
 
 ---
 
