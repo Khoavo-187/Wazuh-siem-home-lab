@@ -78,8 +78,9 @@ A second Suricata instance on pfSense is mentioned in `docs/03`, but no configur
 ## 4. Suricata on the endpoint
 
 1. Install the Windows MSI from <https://suricata.io/download/> (default path `C:\Program Files\Suricata\`) and Npcap with *WinPcap API-compatible mode*; check with `Get-Service npcap`.
-2. Use the committed `network/Suricata_configuration/suricata.yaml` and `local.rules`. It already defines `HOME_NET`, enables `eve-log` to `eve.json` and loads the rule files; no further edit is needed. The `af-packet:` section is Linux-only and unused on Windows.
-3. Start Suricata from an elevated PowerShell, passing the VMnet1 adapter on the command line (the GUID is machine-specific; list adapters with `Get-NetAdapter`):
+2. The committed local signatures use the `alert` action. This deployment is therefore documented as **IDS**, not IPS: it detects and records matching traffic but does not demonstrate inline blocking.
+3. Use the committed `network/Suricata_configuration/suricata.yaml` and `local.rules`. It already defines `HOME_NET`, enables `eve-log` to `eve.json` and loads the rule files; no further edit is needed. The `af-packet:` section is Linux-only and unused on Windows.
+4. Start Suricata from an elevated PowerShell, passing the VMnet1 adapter on the command line (the GUID is machine-specific; list adapters with `Get-NetAdapter`):
 
 ```powershell
 cd "C:\Program Files\Suricata\"
@@ -91,6 +92,8 @@ Output files in `C:\Program Files\Suricata\log\`: `eve.json`, `fast.log`, `stats
 `HOME_NET` is `[192.168.60.0/24, !192.168.60.135]`: Kali is deliberately outside it so that inbound rules fire on Kali as an external source (explained in `docs/03` §2.1).
 
 ## 5. Windows endpoint
+
+**Stage 11 ZIP monitoring.** The committed Sysmon configuration includes a FileCreate (Event ID 11) filter for `C:\Windows\Temp\` files ending in `.zip`. The Wazuh Agent configuration also monitors `C:\Windows\Temp` in real time with `restrict="\.zip$"`. These settings are intended to observe creation of `C:\Windows\Temp\exfil_test.zip`; they are configuration evidence only. Preserve a fresh Sysmon Event 11 and/or Wazuh FIM alert before describing this Stage 11 file-creation detection as validated.
 
 **Wazuh agent.** Install the MSI, enrol against `192.168.60.137`, then replace `C:\Program Files (x86)\ossec-agent\ossec.conf` with `endpoints/windows-11/ossec.conf` and restart (`Restart-Service -Name wazuh`). That file collects: `Security` (noisy event IDs excluded), `System`, `Application`, `Microsoft-Windows-OpenSSH/Operational`, `Microsoft-Windows-Sysmon/Operational`, the Suricata `eve.json`, and FIM on `C:\Users\LENOVO\Downloads\virustotaltest` and `C:\Users\LENOVO\tmp`. **The PowerShell Operational channel is configured for collection. However, the availability of module logging and script-block logging events must be verified separately.**
 
