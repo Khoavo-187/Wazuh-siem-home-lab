@@ -1,9 +1,9 @@
-# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS/IPS + pfSense + Sysmon + VirusTotal
+# 🛡️ SOC Home Lab — Wazuh SIEM/XDR + Suricata IDS + pfSense + Sysmon + VirusTotal
 
 > A self-built Security Operations Center home lab focused on detection engineering, endpoint telemetry, network monitoring, MITRE ATT&CK-mapped threat emulation, and multi-source alert correlation.
 
 ![Wazuh](https://img.shields.io/badge/SIEM-Wazuh-1e6d90)
-![Suricata](https://img.shields.io/badge/IDS%2FIPS-Suricata-cc0000)
+![Suricata](https://img.shields.io/badge/IDS-Suricata-cc0000)
 ![pfSense](https://img.shields.io/badge/Firewall-pfSense-212121)
 ![Sysmon](https://img.shields.io/badge/Endpoint-Sysmon-0078D7)
 ![VirusTotal](https://img.shields.io/badge/Threat%20Intel-VirusTotal-394EFF)
@@ -61,7 +61,6 @@ Attack / Suspicious Behavior
             ▼
       Final Evidence
 ```
-
 ---
 
 # 🏗️ Current Lab Architecture
@@ -226,7 +225,7 @@ The lab uses multiple telemetry layers instead of relying on a single detection 
 ```
 
 ---
-
+            
 # 📡 Telemetry Sources
 
 ## 1. pfSense
@@ -451,11 +450,17 @@ siem-wazuh/custom-rules/suricata_rules.xml
 Examples:
 
 ```text
-100300 → Possible port scan
-100301 → Repeated SSH attempts
-100304 → Possible reverse shell / C2
-100306 → EICAR file download
-100307 → Suspicious DNS test domain
+100300 → Possible port scan (SID 1000002)
+100301 → Repeated SSH connection attempts (SID 1000003)
+100302 → RDP connection attempts (SID 1000004)
+100303 → SMB port probe (SID 1000005)
+100304 → Possible reverse shell / C2 port (SID 1000006)
+100305 → curl User-Agent (SID 1000007)
+100306 → EICAR download (SID 1000008)
+100307 → Suspicious DNS test domain (SID 1000009)
+100308 → Windows CMD banner (SID 1000010)
+100309 → curl download of script/executable (SID 1000011)
+100310 → Stage 11 HTTP POST upload (SID 1000012; pending validation)
 ```
 
 ### Sysmon / Windows
@@ -467,20 +472,22 @@ siem-wazuh/custom-rules/sysmon_rules.xml
 Examples:
 
 ```text
-100400 → Shell spawned child process (PowerShell, pwsh, cmd, net)
-100401 → Encoded PowerShell
-100402 → Discovery binaries (whoami, systeminfo, tasklist, nltest, net, net1)
-100404 → Suspicious PowerShell / CMD network connection
-100406 → Registry Run key persistence
-100407 → Correlation: multiple discovery binaries in a short window
-100408 → Failed login burst
-100410 → Successful Windows remote logon after repeated failed logons; current Event 4624 must match built-in parent 92651/92657 (OR), with ≥6 prior `60122` matches within 200s from the same source IP; correlation validation pending
-100411 → Suspicious LSASS access
-100412 → Security log cleared
+100400 → Shell-spawned child process
+100401 → Encoded PowerShell command (current XML level 13)
+100402 → Discovery binaries (whoami, systeminfo, tasklist, nltest, net/net1, arp)
+100403 → certutil/bitsadmin execution (base signal)
+100404 → PowerShell/CMD outbound network connection
+100405 → File creation under Temp/AppData Roaming
+100406 → Registry Run/RunOnce persistence (parents 92300 OR 92302)
+100407 → Correlation: multiple discovery binaries
+100408 → Failed-logon burst (4625 / 60122)
+100410 → Successful 4624 after prior failed-logon activity (pending correlation validation)
+100411 → Suspicious LSASS ProcessAccess (positive validation pending)
+100412 → Security log cleared (current parent 63103; retest pending)
 100413 → PowerShell Invoke-WebRequest activity (Event 4103; pending validation)
-100414 → Suspicious LOLBin traffic on web ports
-100415 → LOLBin with download/decode arguments
-100416 → LSASS access with memory-dump call trace
+100414 → PowerShell/certutil network connection on ports 80/443
+100415 → certutil/bitsadmin with download/decode arguments
+100416 → LSASS access with suspicious call trace
 ```
 
 ---
@@ -521,24 +528,24 @@ Exfiltration
 
 # 🎯 Current Attack Chain Validation
 
-The current validation results should be interpreted carefully.
+The table separates evidence from an earlier test/revision from validation of the current committed configuration.
 
-| Stage | Technique | Current Evidence |
-|---|---|---|
-| 1 | Reconnaissance | ⚠️ Re-test required; endpoint Suricata is the expected sensor |
-| 2 | Brute Force | ✅ Suricata + Windows failed-logon telemetry; custom correlation rule `100408` confirmed firing (2026-10-10) |
-| 3 | Successful Access | ⚠️ Successful `4624` confirmed (2026-10-10, SMB/NTLM, built-in `92657`); current custom `100410` definition is configured for six prior `60122` matches within 200s from the same IP, with current-event parent `92651` or `92657`; custom alert not yet proven |
-| 4 | Encoded PowerShell | ✅ Custom detection observed |
-| 5 | Discovery | ✅ Custom rules `100402`/`100407`/`100400` confirmed firing (2026-10-13 re-test) |
-| 6 | Payload Delivery | ✅ Suricata + FIM + VirusTotal evidence |
-| 7 | Persistence | ✅ Custom rule `100406` confirmed firing (2026-10-13 re-test), chained under the built-in rule |
-| 8 | Command & Control | ✅ Network detection observed; current rule revision requires re-test |
-| 8b | LSASS Access | ⚠️ `procdump` not yet staged — only a false positive captured so far (Windows Defender's own scan, correctly ignored by custom rule `100411`, flagged by built-in `92900`) |
-| 9 | File Lifecycle | ⚠️ Screenshot evidence exists; raw JSON should be preserved |
-| 10 | Anti-Forensics | ✅ Custom rule `100412` confirmed firing twice (2026-10-13 re-test), Current parent 63103 pending re-validation. |
-| 11 | Exfiltration | ⚠️ Detection and raw evidence still need validation |
+| Stage | Technique / activity | Evidence in repository | Current status |
+|---|---|---|---|
+| 1 | Reconnaissance | A baseline Suricata `100300` alert exists, but the original chain's pfSense `100140` alert is unrelated loopback DNS; no matching Stage 1 chain alert is preserved. | ⚠️ Stage-specific retest required |
+| 2 | Brute Force | Suricata `100301`, Windows `60122`, and custom `100408` evidence; the 2026-10-10 retest records source IP `192.168.60.135`. | ✅ Evidence observed; retest current config if changed |
+| 3 | Successful Access | A successful Windows `4624` was classified by built-in `92657` on 2026-10-10. No current-revision custom `100410` alert is preserved. | ⚠️ `100410` correlation pending validation |
+| 4 | Encoded PowerShell | Historical custom `100401` alert exists at level 10. Current XML is level 13 and must be retested to validate the current revision/severity. | ✅ Historical evidence; current revision retest recommended |
+| 5 | Discovery | Custom `100407` correlation and `100400` evidence exist; the saved ARP event matched historical `100400`. Current XML now routes ARP to `100402`, so the interaction needs regression testing. | ✅ Historical evidence; current rule interaction pending retest |
+| 6 | Payload delivery | Suricata `100306` raw alert and VirusTotal `87105` evidence exist; the VirusTotal sample is from an earlier baseline run. FIM evidence is not preserved as a raw JSON record in the evidence index. | ✅ Network/reputation evidence observed; same-run correlation not established |
+| 7 | Persistence | Custom `100406` raw alert exists from 2026-10-13. The current XML allows parent `92300` or `92302`; the preserved retest documents the `92302` path. | ✅ Historical positive evidence; alternate parent `92300` not separately tested |
+| 8 | Command & Control | Custom `100304` alert exists from SID `1000006` revision 2. Current Suricata SID revision 3 requires an established flow. | ⚠️ Historical detection; current revision retest required |
+| 8b | LSASS access | A real Windows Defender ProcessAccess event reached Wazuh and built-in `92900` fired. No positive `100411`/`100416` test is preserved. | ⚠️ Telemetry observed; positive detection not validated |
+| 9 | File lifecycle | Screenshot evidence for FIM modified/deleted events; no raw Stage 9 JSON is preserved. | ✅ Screenshot only; raw evidence needed |
+| 10 | Anti-forensics | Historical custom `100412` alert exists from 2026-10-13. Current XML now uses parent `63103`; that exact revision has not been retested. | ✅ Historical positive evidence; current parent revision pending |
+| 11 | HTTP transfer / exfiltration simulation | Windows/Kali scripts, Sysmon ZIP FileCreate filter, Suricata SID `1000012`, Wazuh wrapper `100310`, and Wazuh rule `100413` are implemented/configured. No capture, hash comparison, Event 4103 or positive alert is preserved. | ❌ Not evidenced end-to-end |
 
-Full stage-by-stage analysis, raw alerts, and screenshots are in [`docs/04-threat-emulation-report.md`](docs/04-threat-emulation-report.md). The project intentionally documents detection gaps rather than treating every planned rule as already verified.
+Full stage-by-stage provenance and limitations are in [`docs/04-threat-emulation-report.md`](docs/04-threat-emulation-report.md). A rule is not considered validated merely because its XML exists.
 
 ---
 
@@ -726,9 +733,29 @@ Wazuh-siem-home-lab/
 │       └── sysmon_rules.xml
 │
 ├── threat-emulation/
-│   ├── README.md
-│   ├── attack-scripts/      — one script per chain stage, by host (Kali / Windows)
-│   └── evidence-logs/       — raw Wazuh alert JSON per stage, plus baseline tests
+│   ├── attack-scripts/
+│   │   ├── README.md
+│   │   ├── 00-preparation_kali.sh
+│   │   ├── 01-reconnaissance_kali.sh
+│   │   ├── 02-bruteforce_kali.sh
+│   │   ├── 03-successful-access_kali.sh
+│   │   ├── 04-execution_windows.ps1
+│   │   ├── 05-discovery_windows.cmd
+│   │   ├── 06-payload-drop_kali.sh
+│   │   ├── 06-payload-drop_windows.cmd
+│   │   ├── 07-persistence_windows.cmd
+│   │   ├── 08-command-control_kali.sh
+│   │   ├── 08-command-control_windows.ps1
+│   │   ├── 08b-credential-access_windows.cmd
+│   │   ├── 09-file-lifecycle_windows.ps1
+│   │   ├── 10-anti-forensics_windows.ps1
+│   │   ├── 11-exfiltration_kali.sh
+│   │   └── 11-exfiltration_windows.ps1
+│   └── evidence-logs/
+│       ├── README.md
+│       ├── baseline-*.json
+│       └── stage*-*.json
+│
 │
 └── screenshot/
     ├── Stage1_recon.png
@@ -846,69 +873,56 @@ This is especially important for correlation rules where built-in Wazuh rules ma
 
 # ⚠️ Current Known Limitations
 
-## 1. External Attacker Scenario Not Yet Fully Tested
+## 1. Evidence is revision-specific
 
-The current attack chain was primarily tested with:
+Several saved alerts were produced by earlier versions of the rule files. They demonstrate that the earlier rule revision fired, but do not automatically validate the current XML. This applies in particular to:
 
-```text
-Kali    192.168.60.135
-Windows 192.168.60.1
-```
+- `100401`: the archived alert is level 10; the current XML is level 13.
+- Stage 5: the archived ARP alert matched `100400`; current XML excludes ARP from `100400` and includes it in `100402`.
+- `100304`: archived Stage 8 evidence is from SID `1000006` revision 2; the current signature requires an established flow (revision 3).
+- `100412`: the archived custom alert predates the current parent `63103`.
+- `100406`: the current XML has parent alternatives `92300` and `92302`; only the `92302` path is represented by the documented historical retest.
 
-on the same LAN.
+## 2. Important detections remain pending validation
 
-The external attacker scenario:
+| Rule / stage | Current gap |
+|---|---|
+| Stage 1 / `100300` | A baseline `100300` alert exists, but the original attack-chain scan has no clean, attributable Stage 1 alert. Retest the Windows endpoint sensor. |
+| `100410` | Current stateful correlation (`60122` history, `92651` OR `92657` current-event parent, six matches / 200 seconds / same source IP) has no positive raw alert from this revision. |
+| `100411` / `100416` | Event 10 telemetry is visible, but no true-positive LSASS access test validates the custom filters or call-trace escalation. |
+| `100412` | Historical custom alerts exist, but the current `63103` parent revision needs a separate positive replay/test. |
+| `100413` | PowerShell Operational channel is configured; Module Logging/Event 4103 activation, ingestion, decoded fields, parent `91801` and positive custom alert remain unverified. |
+| SID `1000012` / Wazuh `100310` | HTTP POST detection is implemented for Stage 11 but has no preserved positive Suricata/Wazuh alert. |
+| Stage 11 transfer | No preserved HTTP capture, extracted ZIP body, matching SHA256, or confirmed receipt exists. |
 
-```text
-Kali
-  ↓
-pfSense
-  ↓
-Windows
-```
+## 3. Stage 11 is an implemented procedure, not a completed exfiltration test
 
-still requires a dedicated validation run.
+The Windows script creates `C:\Windows\Temp\exfil_test.zip` and sends an HTTP POST to Kali TCP/4445. The Kali Netcat process captures a raw HTTP request stream, not a clean ZIP file or a normal HTTP upload response. The request body must be extracted before comparing its SHA256 with the Windows archive. A PowerShell response error alone does not prove that no bytes were sent.
 
-## 2. Some Custom Rules Are Not Yet Proven
+The current detection layers are:
 
-The remaining rules with incomplete positive validation are:
+- Sysmon Event 11 for the ZIP file creation (the committed Sysmon config includes a `C:\Windows\Temp` + `.zip` FileCreate condition).
+- Wazuh FIM on `C:\Windows\Temp` restricted to `.zip` files.
+- Suricata SID `1000012` and Wazuh wrapper `100310` for the HTTP POST to TCP/4445.
+- PowerShell Event 4103 and Wazuh rule `100413` for `Invoke-WebRequest` activity.
 
-```text
-100410   → Current XML: if_sid=92651,92657 (OR); if_matched_sid=60122; frequency=6; timeframe=200; same_field=win.eventdata.ipAddress. Correlation validation remains pending; this is not a dependency on custom rule 100408.
-100411   → not yet tested with a true positive (procdump is not staged);
-          Custom 100411 remained silent on a Windows Defender LSASS access event with a non-matching access mask. This confirms telemetry visibility but does not validate the process allow-list or positive detection behavior.
-```
+All four require separate runtime validation. A file-created alert, HTTP request alert, PowerShell activity alert, and verified file receipt are different claims.
 
-`100402`, `100406` and `100412` were previously in this list and are now confirmed firing via raw alerts (see the Validation table above and `docs/04`). `100413` (Exfiltration) has not been tested at all yet, so it isn't a "built-in instead of custom" case — it's simply not evidenced.
+## 4. Network visibility is sensor-dependent
 
-## 3. Raw Evidence Coverage Is Incomplete
+Kali `192.168.60.135` and Windows `192.168.60.1` share `192.168.60.0/24`. Direct east-west traffic between them does not normally traverse pfSense. Use Windows Suricata for that path. Test pfSense separately with traffic that actually crosses one of its interfaces; do not claim that the firewall detected a same-subnet scan without matching evidence.
 
-Some historical stages rely on:
+## 5. Environment reproducibility is incomplete
 
-- Screenshots
-- Condensed JSON excerpts
-- Earlier rule revisions
+- `endpoints/manager/m_ossec.conf` is a sanitized skeleton containing `...` placeholders; it is not a deployable full Manager configuration.
+- The exact Wazuh build and pfSense version are not recorded in `docs/01`.
+- The monitored Windows 11 endpoint is the physical VMware host, not a disposable guest. Destructive tests should use a separate disposable Windows VM.
+- The external-attacker / pfSense-routed attack path is planned but not demonstrated end-to-end.
+- Some stages rely on screenshots, abbreviated excerpts, or historical rule revisions instead of full raw evidence.
 
-The final version of the project should preserve raw JSON evidence whenever possible.
+## 6. Suricata scope
 
-## 4. Suricata Visibility Depends on Sensor Placement
-
-A network IDS cannot observe traffic that does not traverse the interface being monitored.
-
-Therefore:
-
-```text
-Same-LAN traffic
-```
-
-and:
-
-```text
-Traffic crossing pfSense
-```
-
-must be treated as different visibility scenarios.
-
+The committed Suricata configuration runs in IDS mode. `HOME_NET` excludes Kali (`192.168.60.135`) to make the attacker appear as `$EXTERNAL_NET` for the current rules. The second pfSense-side Suricata instance is not configured/evidenced in this repository. The committed EVE file is the Windows endpoint sensor's `eve.json`.
 ---
 
 # 🚧 Future Improvements
@@ -1000,29 +1014,11 @@ The attack path should be documented according to the traffic that actually exis
 
 > **Status: Active / Iterative Detection Engineering Lab**
 
-The project has successfully demonstrated multi-source detection across:
+The repository contains a multi-source SOC lab with Wazuh, Windows Sysmon/Security telemetry, endpoint Suricata, pfSense syslog, FIM and VirusTotal enrichment. Several custom detections have dated raw-alert evidence, including brute-force, discovery correlation, payload delivery, registry persistence, reverse-shell network activity and historical Security-log clearing.
 
-```text
-Network
-Endpoint
-Authentication
-File Integrity
-Threat Intelligence
-SIEM Correlation
-```
+The strongest demonstrated scenario is the **same-LAN Kali-to-Windows east-west path**. The repository does not yet establish an uninterrupted, fully detected attack chain. Stage 1 attribution, current revisions of `100410`, `100412` and SID `1000006`, positive LSASS detection, raw Stage 9 evidence, and Stage 11 transfer/detection remain open validation items.
 
-The current attack-chain evidence is strongest for the **same-LAN east-west scenario**.
-
-The next major validation milestone is to test an attacker positioned outside the victim LAN and verify the complete:
-
-```text
-Kali
-  ↓
-pfSense
-  ↓
-Windows
-  ↓
-Suricata / Sysmon / Wazuh
+The next milestone is to close those evidence gaps and align every result with the exact rule/configuration revision that produced it.
 ```
 
 path.
