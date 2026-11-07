@@ -19,7 +19,7 @@ breaks: true
 
 ---
 
-> **Version alignment (2026-11-02):** This report reflects the repository state checked on this date, including the committed Stage 11 Kali Netcat receiver on TCP `4445`, the Windows `Invoke-WebRequest` POST procedure, the current `sysmon_rules.xml`, and the Windows agent `ossec.conf`. The original August chain, October re-tests, and current configuration are treated as separate evidence/configuration revisions. The presence of a script or configured log channel does not establish execution, telemetry ingestion, alert generation, or successful file transfer. Doc 3 and this report should use the same `Pending Validation` status for unverified rules and telemetry.
+> **Repository snapshot (2026-11-06):** This report is being aligned with the current `main` branch snapshot `06cb28169e03f0a9629d5d2c63682f30b7376e69`. The committed configuration now includes the Stage 11 Windows ZIP FileCreate/FIM settings, Suricata SID `1000012` and Wazuh wrapper `100310`, the current `100410` correlation definition, the current `100406` parent alternatives (`92300` OR `92302`), and the current `100412` parent `63103`. These are configuration facts, not proof of successful runtime validation. Historical attack runs and alerts are labelled separately from the current committed revision. The current Suricata SID `1000006` is revision 3; the preserved Stage 8 alert is revision 2.
 
 ## 1. Executive Summary
 
@@ -27,13 +27,15 @@ A numbered 12-stage workflow (**Stage 0 preparation; Stages 1–11 from reconnai
 
 **Results** (based on the raw alerts and screenshots in this repository, including re-tests on 2026-10-09/10/13):
 
-| Outcome | Steps | Count |
-|---|---|---|
-| ✅ Detected by the designed custom rule, raw alert preserved | 2, 4, 5, 6, 7, 8, 10 | 7 |
-| ⚠️ Detected, but by a built-in rule instead of the designed custom rule | 3 (Successful Access) | 1 |
-| ✅ Detected, screenshot evidence only | 9 (File Lifecycle) | 1 |
-| ⚠️ Inconclusive, no clean evidence | 1 (Reconnaissance), 8b (LSASS access — false positive correctly suppressed, true positive not yet tested) | 2 |
-| ❌ No evidence yet | 11 (Exfiltration) | 1 |
+| Evidence category | Stages | Count | Interpretation |
+|---|---|---:|---|
+| Historical custom-rule raw alert exists | 2, 4, 5, 6, 7, 8, 10 | 7 | At least one custom alert is preserved for each stage, but some alerts predate the current XML/signature revision. |
+| Built-in rule classified the successful logon | 3 | 1 | The successful 4624 is evidenced by built-in `92657`; current custom `100410` is not proven. |
+| Screenshot-only FIM evidence | 9 | 1 | The stage is documented visually, but no raw Stage 9 JSON is indexed. |
+| Inconclusive / no true positive | 1, 8b | 2 | Stage 1 has no clean chain-attributable alert; Stage 8b has a benign Defender control but no LSASS-dump positive. |
+| No end-to-end transfer/detection evidence | 11 | 1 | The scripts and rules are implemented, but no receipt/hash/alert evidence is preserved. |
+
+A historical custom alert proves that a particular earlier test produced that rule ID. It does not automatically prove that the current committed configuration still behaves the same way.
 
 **Key findings**
 
@@ -643,10 +645,9 @@ See [`threat-emulation/evidence-logs/stage07-sysmon-registry-custom-rule.json`](
 
 **Analysis — re-test**
 
-- **The `if_sid` fix works.** `100406` now fires as a proper child of `92302` — since `if_sid=92302` is a strict precondition, `92302` itself must also have matched this exact event (only the deepest matching rule is reported, so no separate `92302` row is expected for this event).
-- **`92041` ("Base64-like pattern") appears 1 ms earlier.** One event yields one alert, so this is most likely a separate Sysmon event for the same `reg add` (compare `eventRecordID`s; only `100406`'s record, 2875786, is exported). The written value is not Base64, so `92041` looks like a broad built-in heuristic; it does not affect `100406`.
-- **Earlier run (20:34:20) vs. re-test (20:38:27)**: the first timestamp, with only `92302` at level 6, is consistent with testing *before* the `if_sid` fix was applied; the second, four minutes later with `100406` present, is consistent with testing *after*. This reads as the same fix-then-retest pattern already seen in Stage 5.
-- The stored alert reports `rule.groups` as `sysmon_local`, `windowspersistence`, `registry`: the outer group name and `persistence` were concatenated (`docs/03` §5 item 16).
+The October 13, 2026 re-test produced a raw custom `100406` alert for a Run-key write. The current XML now lists `<if_sid>92300,92302</if_sid>`, meaning either built-in parent can qualify the event. The preserved test and the historical explanation document the `92302` / `reg.exe` path; the additional `92300` alternative in the current XML has not been independently tested.
+
+- **Historical `92302` path:** the October 13 re-test confirms that the custom `100406` rule fired for the tested Run-key write. The current `92300` alternative should be validated separately rather than inferred from this event.
 
 **Verdict: ✅ Detected by custom rule** (`100406`), confirmed via the 2026-10-13 re-test — closes the Stage 7 gap.
 
@@ -683,7 +684,7 @@ $client.Close()
 
 | Field | Value |
 |---|---|
-| Rule | `100304` (sid `1000006`, rev 2) — possible reverse shell, suspicious outbound port, level 12 |
+| Rule | `100304` (SID `1000006`, **revision 2**) — possible reverse shell / suspicious outbound port, level 12 |
 | Time | 2026-08-29 07:45:49 |
 | Connection | `192.168.60.1:62602` → `192.168.60.135:4444`, TCP |
 | Flow | 1 packet to server (66 bytes), 0 to client — read from the Figure 13 screenshot; the exported JSON has no `flow` object |
@@ -697,8 +698,7 @@ $client.Close()
 - Endpoint-side rules (`100404`, outbound connection from PowerShell) were also expected but no Sysmon alert for this connection is preserved.
 - Port `4444` is a signature-style indicator; the detection works for this test but would miss the same shell on another port (see recommendations).
 
-**Verdict: ✅ Detected at the network layer** (custom `100304`); endpoint layer not evidenced.
-
+**Verdict: ⚠️ Historical network detection observed; current signature revision pending.** The preserved custom `100304` alert proves that SID `1000006` revision 2 matched the recorded reverse-shell traffic. The currently committed SID revision 3 requires an established flow, so a fresh test must complete the TCP handshake and preserve a new EVE event plus Wazuh `100304` alert before the current revision is marked validated. No endpoint-side `100404` alert is preserved for this stage.
 ---
 
 ### Stage 8b — Credential Access, LSASS (T1003.001)
@@ -870,26 +870,26 @@ Stock Python `http.server` does not implement a POST upload handler that saves t
 
 A matching SHA256 comparison therefore requires extracting the HTTP request body before hashing it. Netcat also does not return a normal HTTP response, so `Invoke-WebRequest` may report a response-related error even after sending the request. Inspect the Kali capture rather than treating the PowerShell command's exit status as proof of successful transfer.
 
-**Detection engineering alignment.**
+**Detection engineering alignment.** Stage 11 has two independent detection paths and a separate file-creation/FIM path:
 
-Custom Wazuh rule `100413` is intended to detect PowerShell Module Logging activity (Event ID 4103) associated with `Invoke-WebRequest`, under built-in PowerShell Operational rule `91801`.
+1. **Endpoint PowerShell:** Module Logging Event 4103 → built-in PowerShell Operational parent `91801` → custom Wazuh rule `100413` (intended to identify `Invoke-WebRequest` activity).
+2. **Network IDS:** Windows endpoint Suricata observes the outbound HTTP POST from `$HOME_NET` (Windows) to `$EXTERNAL_NET` (Kali) on TCP/4445. Local SID `1000012` matches the POST to `/upload`; Wazuh wrapper `100310` maps that SID to an alert.
+3. **Archive creation:** Sysmon Event 11 has a `C:\Windows\Temp\` + `.zip` FileCreate condition; the Agent's syscheck configuration also monitors `C:\Windows\Temp` in real time with a `.zip` restriction. Custom Wazuh rule `100405` may match Event 11 paths containing `\Temp\`.
 
-The agent's committed `ossec.conf` already includes `Microsoft-Windows-PowerShell/Operational`. However, Windows Module Logging activation, Event 4103 ingestion, the decoded event fields, parent-rule compatibility and positive `100413` alert generation are not yet verified.
-
-The committed `100413` XML currently checks `win.eventdata.payload` for `Invoke-WebRequest`; it does not currently match `contextInfo`. The actual Event 4103 fields must be inspected before changing this logic.
-
-The rule identifies PowerShell web-request activity, not independent proof that the file was successfully transferred. Sysmon rule `100404` may provide an additional process-network signal if an eligible Event ID 3 is generated and collected.
+The PowerShell Operational channel subscription already exists in `endpoints/windows-11/ossec.conf`, but this does not enable Windows Module Logging. Event 4103 activation, forwarding, decoded field names, built-in parent `91801` and positive rule `100413` alert remain unverified. The current `100413` XML checks `win.eventdata.payload`; inspect a real 4103 event before changing the field expression. Rule `100413` detects activity, not successful file receipt.
 
 | Check | Evidence required | Current status |
 |---|---|---|
-| Local archive created | `exfil_test.zip` exists and has a SHA256 on Windows | Script configured; no preserved outcome |
-| HTTP transfer requested | Windows sends a POST request to Kali `192.168.60.135:4445/upload`; Kali captures the incoming connection | No preserved request/capture evidence |
-| ZIP received in full | Extract the HTTP body from the Kali capture and compare its SHA256 with the Windows archive | **Unverified** |
-| PowerShell telemetry | Windows Operational Event 4103 with relevant `contextInfo` / `payload` fields | Channel configured; 4103 activation and ingestion unverified |
-| Wazuh detection | Original raw alert with `rule.id: 100413` and event fields | Not captured |
-| Alternate network alert | Raw Sysmon Event ID 3 and rule `100404`, if observed | Not captured for this Stage 11 run |
+| Local archive created | `exfil_test.zip` exists on Windows and its SHA256 is recorded | Script and monitoring config exist; no preserved runtime result |
+| Sysmon ZIP creation | Raw Sysmon Event 11 showing `C:\Windows\Temp\exfil_test.zip` | Configured; no Stage 11 raw event preserved |
+| FIM ZIP creation | Raw syscheck alert for the `.zip` file under `C:\Windows\Temp` | Configured; no Stage 11 raw alert preserved |
+| HTTP POST observed by Kali | Raw `stage11-http-request.bin` capture containing the HTTP headers and body | No capture preserved |
+| ZIP received in full | Extract the HTTP body and compare SHA256 against the Windows archive | Unverified |
+| Suricata network detection | EVE alert with SID `1000012`, then Wazuh alert `100310` | Rule/SID implemented; no positive alert preserved |
+| PowerShell telemetry | Event 4103 forwarded with the fields required by `100413` | Channel configured; Module Logging activation and ingestion unverified |
+| Wazuh PowerShell detection | Raw alert with `rule.id: 100413` | Not captured |
 
-**ATT&CK interpretation:** `T1059.001` accurately describes execution via PowerShell. Sending data to a Kali-hosted HTTP endpoint is not `T1567.002` (Exfiltration to Cloud Storage). For a verified unencrypted HTTP transfer independent of the C2 channel, `T1048.003` may describe the simulated exfiltration procedure. If the same C2 channel carries the data, reassess `T1041`. Neither technique mapping should be treated as proof that the transfer succeeded.
+**ATT&CK interpretation:** `T1059.001` describes PowerShell execution. `T1048.003` is conditional on demonstrating an unencrypted transfer over an alternative protocol that is separate from the C2 channel. Use `T1041` only if the data actually travels over the existing C2 channel. The presence of an HTTP POST rule match alone is not proof that exfiltration succeeded.
 
 **Port allocation:**
 
@@ -936,20 +936,20 @@ The chain was run in several sessions: Stages 1–7 on 2026-08-28, Stages 8–10
 
 ## 6. Detection Coverage Results
 
-| Stage | Custom rule expected | Rule that fired | Layer | Custom rule proven | Verdict |
+| Stage | Expected custom rule(s) | Preserved observed rule/evidence | Layer | Current-revision status | Verdict |
 |---|---|---|---|---|---|
-| 1 Reconnaissance | `100300`, `100130`, `100201` | `100140` (unrelated traffic) | pfSense | ❌ | ⚠️ |
-| 2 Brute Force | `100301`, `100408` | `100301`, `60122`, `100408` (re-test) | Suricata, Windows | ✅ | ✅ |
-| 3 Successful Access | `100410` (current revision pending retest) | `92657` (built-in, 2026-10-10 historical retest) | Windows | ❌ | ⚠️ |
-| 4 Execution | `100401` | `100401` | Sysmon | ✅ | ✅ |
-| 5 Discovery | `100400`, `100402`, `100407` | `100402`, `100407`, `100400` (re-test) | Sysmon | ✅ | ✅ |
-| 6 Payload Drop | `100306` | `100306`, FIM, `87105` | Suricata, FIM, VirusTotal | ✅ | ✅ |
-| 7 Persistence | `100406` | `100406` (re-test, child of `92302`) | Sysmon | ✅ | ✅ |
-| 8 Command and Control | `100304` | `100304` (rev 2) | Suricata | ✅ | ✅ |
-| 8b LSASS | `100411` | `92900` (built-in, false positive); `100411` correctly silent | Sysmon | n/a (true positive not tested) | ⚠️ |
-| 9 File Lifecycle | FIM modified / deleted | syscheck (screenshot) | FIM | n/a | ✅ |
-| 10 Anti-Forensics | `100412` | `100412` (Oct 13 historical re-test; current parent `63103` unvalidated) | Windows Security | ✅ Historical | ⚠️ Current revision pending |
-| 11 HTTP Transfer / Exfiltration Simulation | `100413` | none preserved | PowerShell (planned), Sysmon (fallback) | ❌ | ❌ |
+| 1 Reconnaissance | `100300`, `100130`, `100201` | Stage-chain `100140` is unrelated loopback DNS; separate baseline `100300` exists | Endpoint Suricata / pfSense | No clean Stage 1 chain evidence | ⚠️ |
+| 2 Brute Force | `100301`, `100408` | `100301`, `60122`, custom `100408` retest | Suricata / Windows | Positive custom evidence exists for the documented retest | ✅ |
+| 3 Successful Access | `100410` | Built-in `92657` on successful `4624` | Windows Security | Current `100410` correlation not proven | ⚠️ |
+| 4 Execution | `100401` | Historical `100401` at level 10 | Sysmon | Current XML is level 13; retest current revision | ⚠️ |
+| 5 Discovery | `100400`, `100402`, `100407` | Historical `100400` ARP and `100407` correlation; other discovery events documented | Sysmon | Current ARP/net/net1 routing requires regression test | ⚠️ |
+| 6 Payload Drop | `100306`; FIM; `87105` | `100306` raw alert; `87105` from earlier EICAR baseline; screenshots document additional layer | Suricata / FIM / VirusTotal | Not all layers proven in one run | ✅ Partial multi-layer evidence |
+| 7 Persistence | `100406` | Historical `100406` raw alert | Sysmon | `92302` path documented; `92300` alternative not separately tested | ✅ Historical positive |
+| 8 Command and Control | `100304` | `100304` from SID `1000006` revision 2 | Suricata | Current SID revision 3 requires retest | ⚠️ |
+| 8b LSASS | `100411`, `100416` | Built-in `92900` on benign Defender access; no positive custom alert | Sysmon | Custom filters and call-trace escalation not validated | ⚠️ |
+| 9 File Lifecycle | FIM modified/deleted | Screenshot only | FIM | Raw events not preserved | ⚠️ |
+| 10 Anti-Forensics | `100412` | Historical `100412` raw alert (2026-10-13) | Windows Security | Current parent `63103` requires retest | ⚠️ |
+| 11 HTTP Transfer / Exfiltration Simulation | `100413`, `100310` (SID `1000012`), `100405`/FIM | No Stage 11 raw event, capture or hash result | PowerShell / Suricata / Sysmon / FIM | Implemented/configured, not evidenced | ❌ |
 
 **Reading the results**
 
@@ -967,7 +967,7 @@ Priority is based on **current committed scripts/configuration**, while historic
 | Priority | Stage | Current gap | Action | Pass criteria |
 |---|---|---|---|---|
 | P1 | 3 | Rule `100410` uses `if_sid=92651,92657`, `if_matched_sid=60122`, `frequency=6`, and `timeframe=200`; current correlation behavior is unverified. | Validate at least six `60122`-matching failed logons followed by a successful `4624`, same-IP/different-IP cases, no-prior-failure case, 200-second timeout, and both parent paths where available. | Preserve a positive raw `100410` alert from the current revision and negative-test results, with raw inputs. |
-| P1 | 11 | The committed Kali Netcat listener captures a raw HTTP request stream; no preserved capture, extracted ZIP body, matching hash, or raw Stage 11 alert | Run the Windows POST against the Kali listener on TCP `4445`; preserve the raw capture, extract the HTTP body, compare SHA256 values, and separately verify Windows 4103 ingestion and Wazuh `100413` | Matching Windows/Kali SHA256 after body extraction, plus the original raw `100413` alert; report transfer and detection results independently |
+| P1 | 11 | No preserved transfer capture, extracted ZIP body, matching hash, Event 4103, SID `1000012` / Wazuh `100310`, or `100413` alert | Run the committed Windows POST against Kali TCP/4445; preserve the raw capture; extract the HTTP body; compare SHA256; verify Sysmon Event 11, FIM, Suricata SID `1000012` → Wazuh `100310`, and PowerShell 4103 → Wazuh `100413` separately | Matching Windows/Kali SHA256 after body extraction **and** the relevant raw telemetry/alerts; report transfer success separately from each detection result |
 | P1 | 1 | Same-segment Kali→Windows traffic bypasses pfSense; historical `100140` event is unrelated loopback DNS | Retest endpoint Suricata SID `1000002`/Wazuh `100300`; test pfSense with a distinct WAN-side probe to pfSense itself (without assuming WAN→LAN port-forward) | Raw alert matches actual attack source, target, port and time |
 | P1 | 8b | Sysmon LSASS EID 10 exists, but `100411`/`100416` have no positive validation and allow-list behavior is uncertain | Start with non-destructive `wazuh-logtest` synthetic positive/negative controls; if using memory-access tools, prefer an isolated disposable VM rather than the physical host | Confirm rule matching and acceptable false positives; do not claim real dumping detection without evidence |
 | P2 | all | Group names can appear concatenated (`windowspersistence`, `windowslog_cleared`) | Verify actual `rule.groups`, then normalize outer `<group>` delimiters and retest | Separate `windows`, `persistence`, `log_cleared` values in alerts |
