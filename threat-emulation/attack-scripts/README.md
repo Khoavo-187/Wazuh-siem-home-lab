@@ -40,15 +40,8 @@ Appendix B, for the artifact inventory and cleanup notes.
 | `11-exfiltration_kali.sh` | 11 | Kali | T1048.003 (conditional) |
 | `11-exfiltration_windows.ps1` | 11 | Windows | T1059.001; T1048.003 (conditional) |
 
-Stage-specific prerequisites and limitations are noted in the scripts and
-in `docs/04`. Stage 11 requires PowerShell Module Logging (Event 4103) for
-the intended `100413` detection; the agent's PowerShell Operational channel
-is already present in the committed `ossec.conf`, but 4103 activation and
-ingestion still require verification.
+Stage 11 has four intended telemetry/detection paths: Sysmon Event 11 for ZIP creation, Wazuh FIM on `C:\Windows\Temp\*.zip`, Suricata SID `1000012` → Wazuh wrapper `100310` for the HTTP POST, and PowerShell Module Logging Event 4103 → Wazuh `100413` for `Invoke-WebRequest` activity. The PowerShell Operational channel subscription already exists in the committed Agent configuration, but Group Policy Module Logging, Event 4103 generation/forwarding, and both custom alert paths remain pending validation.
 
-For Stage 11, the Windows script sends an HTTP POST to the Kali Netcat listener
-on TCP port `4445`. The listener captures the raw HTTP request stream
-(headers and body), not a clean ZIP file. Compare file hashes only after the
-HTTP body has been extracted from the capture. `T1048.003` is conditional on
-an unencrypted, non-C2 transfer; use `T1041` only if data actually travels
-over the existing C2 channel.
+For Stage 11, the Windows script sends an HTTP POST to the Kali Netcat listener on TCP port `4445`. The listener captures the raw HTTP request stream (headers and body), not a clean ZIP file and not a normal HTTP response. Extract the body before comparing its SHA256 with the Windows archive. A PowerShell response error alone does not prove that no request body reached Kali.
+
+`T1048.003` is conditional on demonstrating an unencrypted non-C2 transfer. Use `T1041` only if data actually travels over the existing C2 channel.
