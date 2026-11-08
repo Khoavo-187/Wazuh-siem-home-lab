@@ -1,12 +1,8 @@
 # Evidence Logs
 
-Raw Wazuh alert JSON collected during the lab. `stageNN-*.json` files map to
-a stage in [`docs/04-threat-emulation-report.md`](../../docs/04-threat-emulation-report.md).
-`baseline-*.json` files are supplementary tests from the detection-engineering
-baseline work, not tied to a specific chain stage.
+This folder contains Wazuh alert JSON exports and explicitly labelled excerpts from the lab. `stageNN-*.json` files map to stages in [`docs/04-threat-emulation-report.md`](../../docs/04-threat-emulation-report.md). `baseline-*.json` files are supplementary tests and are not part of the numbered attack-chain timeline.
 
-Every file is plain JSON (one alert per file); its status (verified, condensed
-excerpt, rule mismatch) is recorded in the index below.
+A JSON file may be a full alert export, a compact alert export, or a deliberately condensed excerpt. The index below identifies its evidentiary scope. A saved alert proves only that the recorded rule ID appeared for that test; it does not automatically validate the current committed rule revision.
 
 ## Stage evidence
 
