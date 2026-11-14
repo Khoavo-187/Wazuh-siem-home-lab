@@ -193,6 +193,8 @@ filterlog ─► 100100 (base, no_log)
 | `100200` | 3 (`no_log`) | `protocol = icmp` | none | none |
 | `100201` | 8 | rule `100200` | ≥8 / 30s, `same_source_ip`, `different_dstip`, `ignore 120` | T1018 |
 
+**Notice**: Rule `100131` has the same logic rule with `100130`, trigger with the condition when `action`=`block`
+
 #### `100100` — Firewall log detected (level 1, `no_log`)
 Root of the whole pfSense tree. `no_log` keeps thousands of level-1 alerts out of the index, while the rule still serves as the parent for the `if_sid` / `if_matched_sid` rules below.
 
@@ -384,7 +386,7 @@ The wrapper maps the local Suricata Stage 11 HTTP POST signature to a Wazuh aler
 </rule>
 ```
 
-This is a detection of the configured HTTP POST pattern, not proof that the ZIP body was received in full. The SID and wrapper are **pending validation**.
+- This is a detection of the configured HTTP POST pattern, not proof that the ZIP body was received in full. The SID and wrapper are **pending validation**.
 ---
 
 ## 3. Sysmon & Windows Security events
